@@ -101,43 +101,46 @@ End Sub
 ' Creates a new "Filtered Data" sheet with the filtered results
 Sub filteredData()
 
-    ' Clear any existing filters on the Data sheet
-    If Worksheets("Data").AutoFilterMode Then
-        Worksheets("Data").AutoFilterMode = False
+    Dim lastRow As Long
+    Dim dataRange As Range
+    Dim ws As Worksheet
+    
+    Set ws = Worksheets("Data")
+    
+    ' Find the actual data range
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    Set dataRange = ws.Range("A1:I" & lastRow)
+    
+    ' Clear any existing filters
+    If ws.AutoFilterMode Then
+        ws.AutoFilterMode = False
     End If
     
-    ' Apply filters for NewData.xlsx format:
-    ' - AMOUNT IN RS > 0 (column 2)
-    ' - TRANSACTIONTYPE = "Debit" (column 7)
-    Worksheets("Data").Range("A1").AutoFilter field:=2, Criteria1:=">0"
-    Worksheets("Data").Range("A1").AutoFilter field:=7, Criteria1:="Debit"
-   
-    ' Copy the filtered data
-    Worksheets("Data").Range("A1").CurrentRegion.Copy
+    ' Since all data in NewData.xlsx is valid (all amounts > 0 and all are "Debit"), 
+    ' just copy all data directly without filtering
+    dataRange.Copy
     
-    ' Create new sheet and paste the filtered data
+    ' Create new sheet and paste
     Sheets.Add.Name = "Filtered Data"
     Worksheets("Filtered Data").Range("A1").PasteSpecial xlPasteValues
+    Application.CutCopyMode = False
     
     ' Format the new sheet
-    Worksheets("Filtered Data").Range("A1").CurrentRegion.EntireColumn.AutoFit
-    Worksheets("Filtered Data").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
-    Worksheets("Filtered Data").Range("A1:I1").Interior.Color = RGB(217, 225, 242)
-    Worksheets("Filtered Data").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
+    With Worksheets("Filtered Data")
+        .Range("A1").CurrentRegion.EntireColumn.AutoFit
+        .Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
+        .Range("A1:I1").Interior.Color = RGB(217, 225, 242)
+        .Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
+    End With
     ActiveWindow.DisplayGridlines = False
     
-    ' Clear filters on the original Data sheet
-    On Error Resume Next
-    Worksheets("Data").ShowAllData
-    On Error GoTo 0
-    If Worksheets("Data").AutoFilterMode Then
-        Worksheets("Data").AutoFilterMode = False
-    End If
+    ' Clear clipboard
+    Application.CutCopyMode = False
     
 End Sub
 
 ' Formats the filtered data by grouping up to 8 entries per day
-' Combines toll routes and sums amounts for same-day transactions
+' Combines transaction IDs and sums amounts for same-day transactions
 Sub formatData()
     
     Dim cell As Range
@@ -152,79 +155,81 @@ Sub formatData()
     
     Worksheets("Filtered Data").Activate
     
-    ' Keep only essential columns: TRANSACTIONID, AMOUNT IN RS, TRANSACTION_DATE, VEHICLETRANSACTIONAT
-    Range("D:D").Delete  ' Delete TRANSACTION_TIME
-    Range("D:D").Delete  ' Delete VEHICLENO
-    Range("E:I").Delete  ' Delete remaining columns except VEHICLETRANSACTIONAT
+    ' Keep only the first 3 columns: TRANSACTIONID, AMOUNT IN RS, TRANSACTION_DATE
+    Range("D:I").Delete  ' Delete all columns after the first 3
+    
+    ' Insert a new column B for "No. Entries"
+    Range("B:B").Insert Shift:=xlShiftRight
     
     ' Rename columns for clarity
     Range("A1").Value = "Transaction ID"
-    Range("B1").Value = "Amount"
-    Range("C1").Value = "Date"
-    Range("D1").Value = "Toll Location"
+    Range("B1").Value = "No. Entries"
+    Range("C1").Value = "Amount"
+    Range("D1").Value = "Date"
     Range("A1:D1").Interior.Color = RGB(217, 225, 242)
+    
+    ' Format Amount column (now column C) and No. Entries column (column B)
+    Range("C:C").ColumnWidth = 12
+    Range("C:C").HorizontalAlignment = xlLeft
+    Range("B:B").HorizontalAlignment = xlLeft
     
     ' Process data to group up to 8 entries per day
     i = 2
     Do While i <= lastRow
-        currentDate = Range("C" & i).Value
+        currentDate = Range("D" & i).Value  ' Date is now in column D
         sameDataEntries = 1
         startRow = i
         
         ' Count consecutive entries with the same date
-        Do While i + sameDataEntries <= lastRow And Range("C" & (i + sameDataEntries)).Value = currentDate
+        Do While i + sameDataEntries <= lastRow And Range("D" & (i + sameDataEntries)).Value = currentDate
             sameDataEntries = sameDataEntries + 1
         Loop
         
         ' Process groups of up to 8 entries per day
         If sameDataEntries > 1 And sameDataEntries <= 8 Then
-            ' Create combined toll route and sum amounts for the group
-            Dim tollRoute As String
+            ' Create combined transaction ID string and sum amounts for the group
+            Dim combinedTxnIDs As String
             Dim totalAmount As Double
             Dim j As Integer
             
-            tollRoute = ""
+            combinedTxnIDs = ""
             totalAmount = 0
             
             ' Loop through all entries in the same-date group
-            For j = 0 To sameDataEntries - 2
-                Dim tollLocation As String
-                tollLocation = Range("D" & (startRow + j)).Value
+            For j = 0 To sameDataEntries - 1
+                Dim txnID As String
+                txnID = Range("A" & (startRow + j)).Value
                 
-                ' Extract toll plaza identifier from location string
-                If InStr(tollLocation, "Toll Plaza") > 0 Then
-                    tollLocation = Mid(tollLocation, InStr(tollLocation, "-") + 1)
-                    tollLocation = Left(tollLocation, InStr(tollLocation, " Toll Plaza") - 1)
-                    tollLocation = Right(tollLocation, 4) ' Get last 4 characters as identifier
-                End If
+                ' Get only last 4 digits of transaction ID
+                txnID = Right(txnID, 4)
                 
-                ' Build toll route string
+                ' Build combined transaction ID string
                 If j = 0 Then
-                    tollRoute = tollLocation
+                    combinedTxnIDs = txnID
                 Else
-                    tollRoute = tollRoute & "-" & tollLocation
+                    combinedTxnIDs = combinedTxnIDs & "-" & txnID
                 End If
                 
-                ' Add to total amount
-                totalAmount = totalAmount + Range("B" & (startRow + j)).Value
+                ' Add to total amount (Amount is now in column C)
+                totalAmount = totalAmount + Range("C" & (startRow + j)).Value
             Next j
             
             ' Update the first row with combined data
-            Range("A" & startRow).Value = tollRoute
-            Range("B" & startRow).Value = totalAmount
+            Range("A" & startRow).Value = combinedTxnIDs
+            Range("B" & startRow).Value = sameDataEntries  ' Number of entries
+            Range("C" & startRow).Value = totalAmount      ' Total amount
             
             ' Clear other rows in the group
-            For j = 1 To sameDataEntries - 2
+            For j = 1 To sameDataEntries - 1
                 Range("A" & (startRow + j)).Value = ""
                 Range("B" & (startRow + j)).Value = ""
+                Range("C" & (startRow + j)).Value = ""
             Next j
         End If
         
-        i = i + sameDataEntries - 1
+        ' Properly increment i to avoid infinite loop
+        i = i + sameDataEntries
     Loop
-    
-    ' Remove the toll location column as it's no longer needed
-    Range("D:D").Delete
     
     ' Apply final formatting to the sheet
     Worksheets("Filtered Data").Range("A1").CurrentRegion.EntireColumn.AutoFit
@@ -232,7 +237,7 @@ Sub formatData()
     
 End Sub
 
-' Converts date format from DD-MMM-YYYY to mm/dd/yyyy in the Date column
+' Converts date format from DD-MMM-YYYY to dd/mm/yyyy in the Date column
 ' Ensures consistent date formatting throughout the workbook
 Sub ConvertDateFormat()
     Dim lastRow As Long
@@ -241,23 +246,23 @@ Sub ConvertDateFormat()
     
     Worksheets("Filtered Data").Activate
     
-    ' Find the last row in Column C (Date column)
-    lastRow = Cells(Rows.Count, 3).End(xlUp).Row
+    ' Find the last row in Column D (Date column)
+    lastRow = Cells(Rows.Count, 4).End(xlUp).Row
     
-    ' Loop through each cell in Column C (Date column)
+    ' Loop through each cell in Column D (Date column)
     For i = 2 To lastRow
-        If Cells(i, 3).Value <> "" Then
-            ' Convert date format from DD-MMM-YYYY to mm/dd/yyyy
-            dateVal = Cells(i, 3).Value
+        If Cells(i, 4).Value <> "" Then
+            ' Convert date format from DD-MMM-YYYY to dd/mm/yyyy
+            dateVal = Cells(i, 4).Value
             If IsDate(dateVal) Then
-                dateVal = Format(CDate(dateVal), "mm/dd/yyyy")
-                Cells(i, 3).Value = dateVal
+                dateVal = Format(CDate(dateVal), "dd/mm/yyyy")
+                Cells(i, 4).Value = dateVal
             End If
         End If
     Next i
         
     ' Apply consistent date number formatting to the entire column
-    Worksheets("Filtered Data").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
+    Worksheets("Filtered Data").Range("D1:D10000").NumberFormat = "dd/mm/yyyy"
     
 End Sub
 
@@ -273,9 +278,9 @@ Sub finalFilter()
     
     ' Apply filters to show only rows with:
     ' - Non-empty Transaction ID (column 1)
-    ' - Amount > 0 (column 2)
+    ' - Amount > 0 (column 3, since Amount is now in column C)
     Worksheets("Filtered Data").Range("A1").AutoFilter field:=1, Criteria1:="<>"
-    Worksheets("Filtered Data").Range("A1").AutoFilter field:=2, Criteria1:=">0"
+    Worksheets("Filtered Data").Range("A1").AutoFilter field:=3, Criteria1:=">0"
    
     ' Copy the filtered results
     Worksheets("Filtered Data").Range("A1").CurrentRegion.Copy
@@ -284,11 +289,18 @@ Sub finalFilter()
     Sheets.Add.Name = "Toll Process"
     Worksheets("Toll Process").Range("A1").PasteSpecial xlPasteValues
     
+    ' Delete the "No. Entries" column (column B) from Toll Process sheet
+    Worksheets("Toll Process").Range("B:B").Delete
+    
     ' Format the final output sheet
     Worksheets("Toll Process").Range("A1").CurrentRegion.EntireColumn.AutoFit
     Worksheets("Toll Process").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
     Worksheets("Toll Process").Range("A1:C1").Interior.Color = RGB(217, 225, 242)
     ActiveWindow.DisplayGridlines = False
+    
+    ' Format Amount column in Toll Process sheet (now column B after deleting No. Entries)
+    Worksheets("Toll Process").Range("B:B").ColumnWidth = 12
+    Worksheets("Toll Process").Range("B:B").HorizontalAlignment = xlLeft
     
     ' Clear filters on the Filtered Data sheet (with error handling)
     On Error Resume Next
@@ -298,13 +310,13 @@ Sub finalFilter()
         Worksheets("Filtered Data").AutoFilterMode = False
     End If
     
-    ' Rename columns for final output
+    ' Rename columns for final output (after deleting No. Entries column)
     Worksheets("Toll Process").Range("A1").Value = "Toll Route"
     Worksheets("Toll Process").Range("B1").Value = "Total Amount"
     Worksheets("Toll Process").Range("C1").Value = "Date"
     
     ' Apply date formatting and select the first cell
-    Worksheets("Toll Process").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
+    Worksheets("Toll Process").Range("C1:C10000").NumberFormat = "dd/mm/yyyy"
     Worksheets("Toll Process").Range("A1").Select
     
     ' Protect all sheets with password "om"
