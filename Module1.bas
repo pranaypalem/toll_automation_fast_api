@@ -1,5 +1,34 @@
 Attribute VB_Name = "Module1"
 
+' Helper function to find column position by header name
+' Returns 0 if header not found
+Function FindColumnByHeader(ws As Worksheet, headerName As String) As Integer
+    Dim lastCol As Integer
+    Dim i As Integer
+    
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    
+    For i = 1 To lastCol
+        If Trim(UCase(ws.Cells(1, i).Value)) = Trim(UCase(headerName)) Then
+            FindColumnByHeader = i
+            Exit Function
+        End If
+    Next i
+    
+    FindColumnByHeader = 0
+End Function
+
+' Helper function to get dynamic data range based on actual data
+Function GetDataRange(ws As Worksheet) As Range
+    Dim lastRow As Long
+    Dim lastCol As Integer
+    
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    
+    Set GetDataRange = ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol))
+End Function
+
 ' Resets the project by deleting all worksheets except Dashboard
 ' Used to clean the workbook before importing new data
 Sub resProject()
@@ -101,15 +130,30 @@ End Sub
 ' Creates a new "Filtered Data" sheet with the filtered results
 Sub filteredData()
 
-    Dim lastRow As Long
     Dim dataRange As Range
     Dim ws As Worksheet
+    Dim amountCol As Integer
+    Dim transactionTypeCol As Integer
+    Dim dateCol As Integer
     
     Set ws = Worksheets("Data")
     
-    ' Find the actual data range
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    Set dataRange = ws.Range("A1:I" & lastRow)
+    ' Find column positions by header names
+    amountCol = FindColumnByHeader(ws, "AMOUNT IN RS")
+    transactionTypeCol = FindColumnByHeader(ws, "TRANSACTIONTYPE")
+    dateCol = FindColumnByHeader(ws, "TRANSACTION_DATE")
+    
+    ' Check if required headers were found
+    If amountCol = 0 Or transactionTypeCol = 0 Or dateCol = 0 Then
+        MsgBox "Error: Required columns not found. Expected headers:" & vbCrLf & _
+               "- AMOUNT IN RS" & vbCrLf & _
+               "- TRANSACTIONTYPE" & vbCrLf & _
+               "- TRANSACTION_DATE", vbCritical, "Header Detection Error"
+        Exit Sub
+    End If
+    
+    ' Get dynamic data range
+    Set dataRange = GetDataRange(ws)
     
     ' Clear any existing filters
     If ws.AutoFilterMode Then
@@ -125,12 +169,26 @@ Sub filteredData()
     Worksheets("Filtered Data").Range("A1").PasteSpecial xlPasteValues
     Application.CutCopyMode = False
     
-    ' Format the new sheet
+    ' Format the new sheet dynamically
     With Worksheets("Filtered Data")
         .Range("A1").CurrentRegion.EntireColumn.AutoFit
         .Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
-        .Range("A1:I1").Interior.Color = RGB(217, 225, 242)
-        .Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
+        
+        ' Find the last column and row for dynamic formatting
+        Dim lastCol As Integer
+        Dim lastRow As Long
+        lastCol = .Cells(1, .Columns.Count).End(xlToLeft).Column
+        lastRow = .Cells(.Rows.Count, 1).End(xlUp).Row
+        
+        ' Format header row dynamically
+        .Range(.Cells(1, 1), .Cells(1, lastCol)).Interior.Color = RGB(217, 225, 242)
+        
+        ' Format date column dynamically (find TRANSACTION_DATE column)
+        Dim newDateCol As Integer
+        newDateCol = FindColumnByHeader(Worksheets("Filtered Data"), "TRANSACTION_DATE")
+        If newDateCol > 0 Then
+            .Range(.Cells(1, newDateCol), .Cells(lastRow, newDateCol)).NumberFormat = "dd/mm/yyyy"
+        End If
     End With
     ActiveWindow.DisplayGridlines = False
     
@@ -143,45 +201,116 @@ End Sub
 ' Combines transaction IDs and sums amounts for same-day transactions
 Sub formatData()
     
-    Dim cell As Range
-    Dim lastRow As Integer
+    Dim ws As Worksheet
+    Dim lastRow As Long
     Dim i As Integer
     Dim currentDate As String
     Dim sameDataEntries As Integer
     Dim startRow As Integer
     
+    ' Find required columns dynamically
+    Dim txnIDCol As Integer
+    Dim amountCol As Integer
+    Dim dateCol As Integer
+    
+    Set ws = Worksheets("Filtered Data")
+    ws.Activate
+    
+    ' Find column positions by header names
+    txnIDCol = FindColumnByHeader(ws, "TRANSACTIONID")
+    amountCol = FindColumnByHeader(ws, "AMOUNT IN RS")
+    dateCol = FindColumnByHeader(ws, "TRANSACTION_DATE")
+    
+    ' Check if required headers were found
+    If txnIDCol = 0 Or amountCol = 0 Or dateCol = 0 Then
+        MsgBox "Error: Required columns not found in Filtered Data sheet.", vbCritical, "Header Detection Error"
+        Exit Sub
+    End If
+    
     ' Find the last row with data
-    lastRow = Range("A10000").End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     
-    Worksheets("Filtered Data").Activate
+    ' Delete all columns except the 3 main ones, but do it smartly
+    ' First, copy the 3 essential columns to temporary location
+    Dim tempRange As Range
+    Dim newWS As Worksheet
     
-    ' Keep only the first 3 columns: TRANSACTIONID, AMOUNT IN RS, TRANSACTION_DATE
-    Range("D:I").Delete  ' Delete all columns after the first 3
+    ' Create a temporary array to store essential data
+    Dim essentialData As Variant
+    ReDim essentialData(1 To lastRow, 1 To 3)
     
-    ' Insert a new column B for "No. Entries"
-    Range("B:B").Insert Shift:=xlShiftRight
+    ' Copy essential data
+    For i = 1 To lastRow
+        essentialData(i, 1) = ws.Cells(i, txnIDCol).Value  ' Transaction ID
+        essentialData(i, 2) = ws.Cells(i, amountCol).Value ' Amount
+        essentialData(i, 3) = ws.Cells(i, dateCol).Value   ' Date
+    Next i
     
-    ' Rename columns for clarity
-    Range("A1").Value = "Transaction ID"
-    Range("B1").Value = "No. Entries"
-    Range("C1").Value = "Amount"
-    Range("D1").Value = "Date"
-    Range("A1:D1").Interior.Color = RGB(217, 225, 242)
+    ' Clear the worksheet and rebuild with essential columns + No. Entries
+    ws.Cells.Clear
     
-    ' Format Amount column (now column C) and No. Entries column (column B)
-    Range("C:C").ColumnWidth = 12
-    Range("C:C").HorizontalAlignment = xlLeft
-    Range("B:B").HorizontalAlignment = xlLeft
+    ' Set up new column structure
+    ws.Cells(1, 1).Value = "Transaction ID"
+    ws.Cells(1, 2).Value = "No. Entries"
+    ws.Cells(1, 3).Value = "Amount"
+    ws.Cells(1, 4).Value = "Date"
+    
+    ' Copy essential data back in new structure and convert dates immediately
+    For i = 2 To lastRow
+        ws.Cells(i, 1).Value = essentialData(i, 1)  ' Transaction ID
+        ws.Cells(i, 3).Value = essentialData(i, 2)  ' Amount (skip No. Entries for now)
+        
+        ' Convert date immediately to ensure uniform format for grouping
+        Dim dateVal As Variant
+        Dim convertedDate As Date
+        Dim dateStr As String
+        
+        dateVal = essentialData(i, 3)
+        dateStr = CStr(dateVal)
+        
+        ' Convert various date formats to uniform dd/mm/yyyy
+        On Error Resume Next
+        convertedDate = 0
+        
+        If IsDate(dateVal) Then
+            convertedDate = CDate(dateVal)
+        ElseIf IsDate(dateStr) Then
+            convertedDate = CDate(dateStr)
+        Else
+            ' Handle text-based dates like "30-Jul-25"
+            dateStr = Replace(dateStr, "-", " ")
+            If IsDate(dateStr) Then
+                convertedDate = CDate(dateStr)
+            End If
+        End If
+        
+        On Error GoTo 0
+        
+        ' Store converted date
+        If convertedDate > 0 Then
+            ws.Cells(i, 4).Value = Format(convertedDate, "dd/mm/yyyy")
+        Else
+            ws.Cells(i, 4).Value = essentialData(i, 3)  ' Keep original if conversion failed
+        End If
+    Next i
+    
+    ' Format headers and columns
+    ws.Range("A1:D1").Interior.Color = RGB(217, 225, 242)
+    ws.Range("C:C").ColumnWidth = 12
+    ws.Range("C:C").HorizontalAlignment = xlLeft
+    ws.Range("B:B").HorizontalAlignment = xlLeft
+    ws.Range("D:D").ColumnWidth = 15  ' Increase Date column width
+    ws.Range("D:D").NumberFormat = "dd/mm/yyyy"  ' Set date format immediately
     
     ' Process data to group up to 8 entries per day
     i = 2
     Do While i <= lastRow
-        currentDate = Range("D" & i).Value  ' Date is now in column D
+        currentDate = ws.Cells(i, 4).Value  ' Date is in column D
         sameDataEntries = 1
         startRow = i
         
         ' Count consecutive entries with the same date
-        Do While i + sameDataEntries <= lastRow And Range("D" & (i + sameDataEntries)).Value = currentDate
+        Do While i + sameDataEntries <= lastRow And ws.Cells(i + sameDataEntries, 4).Value = currentDate
             sameDataEntries = sameDataEntries + 1
         Loop
         
@@ -198,7 +327,7 @@ Sub formatData()
             ' Loop through all entries in the same-date group
             For j = 0 To sameDataEntries - 1
                 Dim txnID As String
-                txnID = Range("A" & (startRow + j)).Value
+                txnID = ws.Cells(startRow + j, 1).Value
                 
                 ' Get only last 4 digits of transaction ID
                 txnID = Right(txnID, 4)
@@ -210,20 +339,20 @@ Sub formatData()
                     combinedTxnIDs = combinedTxnIDs & "-" & txnID
                 End If
                 
-                ' Add to total amount (Amount is now in column C)
-                totalAmount = totalAmount + Range("C" & (startRow + j)).Value
+                ' Add to total amount
+                totalAmount = totalAmount + ws.Cells(startRow + j, 3).Value
             Next j
             
             ' Update the first row with combined data
-            Range("A" & startRow).Value = combinedTxnIDs
-            Range("B" & startRow).Value = sameDataEntries  ' Number of entries
-            Range("C" & startRow).Value = totalAmount      ' Total amount
+            ws.Cells(startRow, 1).Value = combinedTxnIDs
+            ws.Cells(startRow, 2).Value = sameDataEntries  ' Number of entries
+            ws.Cells(startRow, 3).Value = totalAmount      ' Total amount
             
             ' Clear other rows in the group
             For j = 1 To sameDataEntries - 1
-                Range("A" & (startRow + j)).Value = ""
-                Range("B" & (startRow + j)).Value = ""
-                Range("C" & (startRow + j)).Value = ""
+                ws.Cells(startRow + j, 1).Value = ""
+                ws.Cells(startRow + j, 2).Value = ""
+                ws.Cells(startRow + j, 3).Value = ""
             Next j
         End If
         
@@ -232,37 +361,85 @@ Sub formatData()
     Loop
     
     ' Apply final formatting to the sheet
-    Worksheets("Filtered Data").Range("A1").CurrentRegion.EntireColumn.AutoFit
-    Worksheets("Filtered Data").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
+    ws.Range("A1").CurrentRegion.EntireColumn.AutoFit
+    ws.Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
     
 End Sub
 
 ' Converts date format from DD-MMM-YYYY to dd/mm/yyyy in the Date column
 ' Ensures consistent date formatting throughout the workbook
 Sub ConvertDateFormat()
+    Dim ws As Worksheet
     Dim lastRow As Long
     Dim dateVal As Variant
     Dim i As Integer
+    Dim dateCol As Integer
     
-    Worksheets("Filtered Data").Activate
+    Set ws = Worksheets("Filtered Data")
+    ws.Activate
     
-    ' Find the last row in Column D (Date column)
-    lastRow = Cells(Rows.Count, 4).End(xlUp).Row
+    ' Find Date column dynamically (should be "Date" after formatData)
+    dateCol = FindColumnByHeader(ws, "Date")
     
-    ' Loop through each cell in Column D (Date column)
+    ' If "Date" not found, try original header name
+    If dateCol = 0 Then
+        dateCol = FindColumnByHeader(ws, "TRANSACTION_DATE")
+    End If
+    
+    ' Check if date column was found
+    If dateCol = 0 Then
+        MsgBox "Error: Date column not found.", vbCritical, "Header Detection Error"
+        Exit Sub
+    End If
+    
+    ' Find the last row with data
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    
+    ' Loop through each cell in the Date column
     For i = 2 To lastRow
-        If Cells(i, 4).Value <> "" Then
-            ' Convert date format from DD-MMM-YYYY to dd/mm/yyyy
-            dateVal = Cells(i, 4).Value
+        If ws.Cells(i, dateCol).Value <> "" Then
+            dateVal = ws.Cells(i, dateCol).Value
+            
+            ' Handle different date formats
+            Dim convertedDate As Date
+            Dim dateStr As String
+            
+            ' Convert to string first to handle various formats
+            dateStr = CStr(dateVal)
+            
+            ' Try to parse different date formats
+            On Error Resume Next
+            
+            ' Try standard date conversion first
             If IsDate(dateVal) Then
-                dateVal = Format(CDate(dateVal), "dd/mm/yyyy")
-                Cells(i, 4).Value = dateVal
+                convertedDate = CDate(dateVal)
+            ElseIf IsDate(dateStr) Then
+                convertedDate = CDate(dateStr)
+            Else
+                ' Handle text-based dates like "30-Jul-25"
+                dateStr = Replace(dateStr, "-", " ")
+                If IsDate(dateStr) Then
+                    convertedDate = CDate(dateStr)
+                End If
             End If
+            
+            On Error GoTo 0
+            
+            ' Format as dd/mm/yyyy if conversion was successful
+            If convertedDate > 0 Then
+                ws.Cells(i, dateCol).Value = Format(convertedDate, "dd/mm/yyyy")
+            End If
+            
+            ' Reset for next iteration
+            convertedDate = 0
         End If
     Next i
         
     ' Apply consistent date number formatting to the entire column
-    Worksheets("Filtered Data").Range("D1:D10000").NumberFormat = "dd/mm/yyyy"
+    ws.Range(ws.Cells(1, dateCol), ws.Cells(lastRow, dateCol)).NumberFormat = "dd/mm/yyyy"
+    
+    ' Set column width for Date column
+    ws.Columns(dateCol).ColumnWidth = 15
     
 End Sub
 
@@ -271,57 +448,104 @@ End Sub
 ' Creates the final "Toll Process" sheet with formatted output
 Sub finalFilter()
 
-    ' Clear any existing filters on the Filtered Data sheet
-    If Worksheets("Filtered Data").AutoFilterMode Then
-        Worksheets("Filtered Data").AutoFilterMode = False
+    Dim wsFiltered As Worksheet
+    Dim wsToll As Worksheet
+    Dim txnIDCol As Integer
+    Dim amountCol As Integer
+    Dim dateCol As Integer
+    Dim lastRow As Long
+    
+    Set wsFiltered = Worksheets("Filtered Data")
+    
+    ' Clear any existing filters
+    If wsFiltered.AutoFilterMode Then
+        wsFiltered.AutoFilterMode = False
     End If
     
-    ' Apply filters to show only rows with:
-    ' - Non-empty Transaction ID (column 1)
-    ' - Amount > 0 (column 3, since Amount is now in column C)
-    Worksheets("Filtered Data").Range("A1").AutoFilter field:=1, Criteria1:="<>"
-    Worksheets("Filtered Data").Range("A1").AutoFilter field:=3, Criteria1:=">0"
+    ' Find column positions dynamically
+    txnIDCol = FindColumnByHeader(wsFiltered, "Transaction ID")
+    amountCol = FindColumnByHeader(wsFiltered, "Amount")
+    dateCol = FindColumnByHeader(wsFiltered, "Date")
+    
+    ' Check if required columns were found
+    If txnIDCol = 0 Or amountCol = 0 Or dateCol = 0 Then
+        MsgBox "Error: Required columns not found in Filtered Data sheet.", vbCritical, "Header Detection Error"
+        Exit Sub
+    End If
+    
+    ' Get data range dynamically
+    Dim dataRange As Range
+    Set dataRange = GetDataRange(wsFiltered)
+    
+    ' Apply filters dynamically
+    dataRange.AutoFilter field:=txnIDCol, Criteria1:="<>"
+    dataRange.AutoFilter field:=amountCol, Criteria1:=">0"
    
     ' Copy the filtered results
-    Worksheets("Filtered Data").Range("A1").CurrentRegion.Copy
+    dataRange.Copy
     
     ' Create final output sheet
     Sheets.Add.Name = "Toll Process"
-    Worksheets("Toll Process").Range("A1").PasteSpecial xlPasteValues
+    Set wsToll = Worksheets("Toll Process")
+    wsToll.Range("A1").PasteSpecial xlPasteValues
+    Application.CutCopyMode = False
     
-    ' Delete the "No. Entries" column (column B) from Toll Process sheet
-    Worksheets("Toll Process").Range("B:B").Delete
+    ' Delete the "No. Entries" column from Toll Process sheet
+    Dim noEntriesCol As Integer
+    noEntriesCol = FindColumnByHeader(wsToll, "No. Entries")
+    If noEntriesCol > 0 Then
+        wsToll.Columns(noEntriesCol).Delete
+    End If
     
-    ' Format the final output sheet
-    Worksheets("Toll Process").Range("A1").CurrentRegion.EntireColumn.AutoFit
-    Worksheets("Toll Process").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
-    Worksheets("Toll Process").Range("A1:C1").Interior.Color = RGB(217, 225, 242)
+    ' Find the last row and column for dynamic formatting
+    lastRow = wsToll.Cells(wsToll.Rows.Count, 1).End(xlUp).Row
+    Dim lastCol As Integer
+    lastCol = wsToll.Cells(1, wsToll.Columns.Count).End(xlToLeft).Column
+    
+    ' Format the final output sheet dynamically
+    wsToll.Range("A1").CurrentRegion.EntireColumn.AutoFit
+    wsToll.Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
+    wsToll.Range(wsToll.Cells(1, 1), wsToll.Cells(1, lastCol)).Interior.Color = RGB(217, 225, 242)
     ActiveWindow.DisplayGridlines = False
     
-    ' Format Amount column in Toll Process sheet (now column B after deleting No. Entries)
-    Worksheets("Toll Process").Range("B:B").ColumnWidth = 12
-    Worksheets("Toll Process").Range("B:B").HorizontalAlignment = xlLeft
+    ' Find and format Amount column dynamically
+    Dim tollAmountCol As Integer
+    tollAmountCol = FindColumnByHeader(wsToll, "Amount")
+    If tollAmountCol = 0 Then
+        tollAmountCol = FindColumnByHeader(wsToll, "Total Amount")
+    End If
+    
+    If tollAmountCol > 0 Then
+        wsToll.Columns(tollAmountCol).ColumnWidth = 12
+        wsToll.Columns(tollAmountCol).HorizontalAlignment = xlLeft
+    End If
     
     ' Clear filters on the Filtered Data sheet (with error handling)
     On Error Resume Next
-    Worksheets("Filtered Data").ShowAllData
+    wsFiltered.ShowAllData
     On Error GoTo 0
-    If Worksheets("Filtered Data").AutoFilterMode Then
-        Worksheets("Filtered Data").AutoFilterMode = False
+    If wsFiltered.AutoFilterMode Then
+        wsFiltered.AutoFilterMode = False
     End If
     
-    ' Rename columns for final output (after deleting No. Entries column)
-    Worksheets("Toll Process").Range("A1").Value = "Toll Route"
-    Worksheets("Toll Process").Range("B1").Value = "Total Amount"
-    Worksheets("Toll Process").Range("C1").Value = "Date"
+    ' Rename columns for final output
+    wsToll.Cells(1, 1).Value = "Toll Route"
+    If tollAmountCol > 0 Then
+        wsToll.Cells(1, tollAmountCol).Value = "Total Amount"
+    End If
     
-    ' Apply date formatting and select the first cell
-    Worksheets("Toll Process").Range("C1:C10000").NumberFormat = "dd/mm/yyyy"
-    Worksheets("Toll Process").Range("A1").Select
+    ' Find and format Date column
+    Dim tollDateCol As Integer
+    tollDateCol = FindColumnByHeader(wsToll, "Date")
+    If tollDateCol > 0 Then
+        wsToll.Range(wsToll.Cells(1, tollDateCol), wsToll.Cells(lastRow, tollDateCol)).NumberFormat = "dd/mm/yyyy"
+    End If
+    
+    wsToll.Range("A1").Select
     
     ' Protect all sheets with password "om"
-    Worksheets("Toll Process").Protect "om"
-    Worksheets("Filtered Data").Protect "om"
+    wsToll.Protect "om"
+    wsFiltered.Protect "om"
     Worksheets("Data").Protect "om"
     
 End Sub
