@@ -1,0 +1,22 @@
+# Excel temporary files
+~$*
+
+# Excel backup files
+*.tmp
+
+# VBA compiled files
+*.dll
+*.exe
+
+# System files
+Thumbs.db
+.DS_Store
+
+# Claude Code workspace files
+.claude/
+
+# Log files
+*.log
+
+# Cache files
+*.cache
