@@ -1,10 +1,14 @@
 Attribute VB_Name = "Module1"
 
+' Resets the project by deleting all worksheets except Dashboard
+' Used to clean the workbook before importing new data
 Sub resProject()
 
     Dim xWs As Worksheet
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+    
+    ' Loop through all worksheets and delete everything except Dashboard
     For Each xWs In Application.ActiveWorkbook.Worksheets
         If xWs.Name <> "Dashboard" Then
             xWs.Delete
@@ -16,6 +20,8 @@ Sub resProject()
 
 End Sub
 
+' Imports data from an external Excel file selected by the user
+' Creates a new "Data" sheet with the imported data
 Sub importData()
 
     Dim wbSource As Workbook
@@ -42,13 +48,12 @@ Sub importData()
     Set wbSource = Workbooks.Open(fd.SelectedItems(1))
     Set shtToCopy = wbSource.ActiveSheet
     
-    ' Copy the sheet
+    ' Copy the sheet to this workbook
     shtToCopy.Copy Before:=ThisWorkbook.Sheets(1)
     
-    ' Activate the original workbook
+    ' Activate the original workbook and rename the imported sheet
     Set wbDest = ThisWorkbook
     wbDest.Activate
-    
     ActiveSheet.Name = "Data"
     
     ' Close the source workbook without saving changes
@@ -56,32 +61,25 @@ Sub importData()
     
 End Sub
 
+' Arranges worksheets in the correct order: Dashboard, Toll Process, Data, Filtered Data
+' Also sets the Toll Process sheet tab color to green
 Sub ArrangeSheets()
     Dim dashboardSheet As Worksheet
     Dim dataSheet As Worksheet
     Dim fltrSheet As Worksheet
     Dim TollSheet As Worksheet
     
-    
+    ' Get references to all sheets (use error handling in case they don't exist)
     On Error Resume Next
     Set dashboardSheet = ThisWorkbook.Sheets("Dashboard")
     Set dataSheet = ThisWorkbook.Sheets("Data")
     Set fltrSheet = ThisWorkbook.Sheets("Filtered Data")
     Set TollSheet = ThisWorkbook.Sheets("Toll Process")
-    
     On Error GoTo 0
     
-    ' Reorder sheets
+    ' Reorder sheets in the desired sequence
     If Not dashboardSheet Is Nothing Then
         dashboardSheet.Move Before:=ThisWorkbook.Sheets(1)
-    End If
-    
-    If Not dataSheet Is Nothing Then
-        dataSheet.Move After:=dashboardSheet
-    End If
-    
-    If Not fltrSheet Is Nothing Then
-        fltrSheet.Move After:=dataSheet
     End If
     
     If Not TollSheet Is Nothing Then
@@ -89,37 +87,57 @@ Sub ArrangeSheets()
         TollSheet.Tab.Color = RGB(112, 173, 71) ' Set tab color to green
     End If
     
+    If Not dataSheet Is Nothing Then
+        dataSheet.Move After:=TollSheet
+    End If
+    
+    If Not fltrSheet Is Nothing Then
+        fltrSheet.Move After:=dataSheet
+    End If
+    
 End Sub
 
+' Filters the imported data to show only debit transactions with amounts > 0
+' Creates a new "Filtered Data" sheet with the filtered results
 Sub filteredData()
 
-     If Worksheets("Data").AutoFilterMode Then
+    ' Clear any existing filters on the Data sheet
+    If Worksheets("Data").AutoFilterMode Then
         Worksheets("Data").AutoFilterMode = False
     End If
     
-    ' Filter for NewData.xlsx format - filter by AMOUNT IN RS > 0 and TRANSACTIONTYPE = "Debit"
+    ' Apply filters for NewData.xlsx format:
+    ' - AMOUNT IN RS > 0 (column 2)
+    ' - TRANSACTIONTYPE = "Debit" (column 7)
     Worksheets("Data").Range("A1").AutoFilter field:=2, Criteria1:=">0"
     Worksheets("Data").Range("A1").AutoFilter field:=7, Criteria1:="Debit"
    
+    ' Copy the filtered data
     Worksheets("Data").Range("A1").CurrentRegion.Copy
     
+    ' Create new sheet and paste the filtered data
     Sheets.Add.Name = "Filtered Data"
     Worksheets("Filtered Data").Range("A1").PasteSpecial xlPasteValues
     
-    'Formatting for new data structure
+    ' Format the new sheet
     Worksheets("Filtered Data").Range("A1").CurrentRegion.EntireColumn.AutoFit
     Worksheets("Filtered Data").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
     Worksheets("Filtered Data").Range("A1:I1").Interior.Color = RGB(217, 225, 242)
     Worksheets("Filtered Data").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
     ActiveWindow.DisplayGridlines = False
     
+    ' Clear filters on the original Data sheet
+    On Error Resume Next
     Worksheets("Data").ShowAllData
+    On Error GoTo 0
     If Worksheets("Data").AutoFilterMode Then
         Worksheets("Data").AutoFilterMode = False
     End If
     
 End Sub
 
+' Formats the filtered data by grouping up to 8 entries per day
+' Combines toll routes and sums amounts for same-day transactions
 Sub formatData()
     
     Dim cell As Range
@@ -129,16 +147,17 @@ Sub formatData()
     Dim sameDataEntries As Integer
     Dim startRow As Integer
     
+    ' Find the last row with data
     lastRow = Range("A10000").End(xlUp).Row
     
     Worksheets("Filtered Data").Activate
     
-    ' Keep only first 3 columns (TRANSACTIONID, AMOUNT IN RS, TRANSACTION_DATE) plus VEHICLETRANSACTIONAT for toll info
+    ' Keep only essential columns: TRANSACTIONID, AMOUNT IN RS, TRANSACTION_DATE, VEHICLETRANSACTIONAT
     Range("D:D").Delete  ' Delete TRANSACTION_TIME
     Range("D:D").Delete  ' Delete VEHICLENO
     Range("E:I").Delete  ' Delete remaining columns except VEHICLETRANSACTIONAT
     
-    ' Rename columns for consistency
+    ' Rename columns for clarity
     Range("A1").Value = "Transaction ID"
     Range("B1").Value = "Amount"
     Range("C1").Value = "Date"
@@ -152,7 +171,7 @@ Sub formatData()
         sameDataEntries = 1
         startRow = i
         
-        ' Count consecutive entries with same date
+        ' Count consecutive entries with the same date
         Do While i + sameDataEntries <= lastRow And Range("C" & (i + sameDataEntries)).Value = currentDate
             sameDataEntries = sameDataEntries + 1
         Loop
@@ -167,23 +186,26 @@ Sub formatData()
             tollRoute = ""
             totalAmount = 0
             
+            ' Loop through all entries in the same-date group
             For j = 0 To sameDataEntries - 2
                 Dim tollLocation As String
                 tollLocation = Range("D" & (startRow + j)).Value
                 
-                ' Extract toll plaza name from location string
+                ' Extract toll plaza identifier from location string
                 If InStr(tollLocation, "Toll Plaza") > 0 Then
                     tollLocation = Mid(tollLocation, InStr(tollLocation, "-") + 1)
                     tollLocation = Left(tollLocation, InStr(tollLocation, " Toll Plaza") - 1)
                     tollLocation = Right(tollLocation, 4) ' Get last 4 characters as identifier
                 End If
                 
+                ' Build toll route string
                 If j = 0 Then
                     tollRoute = tollLocation
                 Else
                     tollRoute = tollRoute & "-" & tollLocation
                 End If
                 
+                ' Add to total amount
                 totalAmount = totalAmount + Range("B" & (startRow + j)).Value
             Next j
             
@@ -201,15 +223,17 @@ Sub formatData()
         i = i + sameDataEntries - 1
     Loop
     
-    ' Delete the toll location column as it's no longer needed
+    ' Remove the toll location column as it's no longer needed
     Range("D:D").Delete
     
-    ' Format the sheet
+    ' Apply final formatting to the sheet
     Worksheets("Filtered Data").Range("A1").CurrentRegion.EntireColumn.AutoFit
     Worksheets("Filtered Data").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
     
 End Sub
 
+' Converts date format from DD-MMM-YYYY to mm/dd/yyyy in the Date column
+' Ensures consistent date formatting throughout the workbook
 Sub ConvertDateFormat()
     Dim lastRow As Long
     Dim dateVal As Variant
@@ -232,33 +256,44 @@ Sub ConvertDateFormat()
         End If
     Next i
         
+    ' Apply consistent date number formatting to the entire column
     Worksheets("Filtered Data").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
     
 End Sub
 
 
+' Applies final filtering to show only processed toll routes with amounts > 0
+' Creates the final "Toll Process" sheet with formatted output
 Sub finalFilter()
 
-     If Worksheets("Filtered Data").AutoFilterMode Then
+    ' Clear any existing filters on the Filtered Data sheet
+    If Worksheets("Filtered Data").AutoFilterMode Then
         Worksheets("Filtered Data").AutoFilterMode = False
     End If
     
-    ' Filter for rows with Transaction ID and Amount > 0
+    ' Apply filters to show only rows with:
+    ' - Non-empty Transaction ID (column 1)
+    ' - Amount > 0 (column 2)
     Worksheets("Filtered Data").Range("A1").AutoFilter field:=1, Criteria1:="<>"
     Worksheets("Filtered Data").Range("A1").AutoFilter field:=2, Criteria1:=">0"
    
+    ' Copy the filtered results
     Worksheets("Filtered Data").Range("A1").CurrentRegion.Copy
     
+    ' Create final output sheet
     Sheets.Add.Name = "Toll Process"
     Worksheets("Toll Process").Range("A1").PasteSpecial xlPasteValues
     
-    'Formatting
+    ' Format the final output sheet
     Worksheets("Toll Process").Range("A1").CurrentRegion.EntireColumn.AutoFit
     Worksheets("Toll Process").Range("A1").CurrentRegion.Borders.LineStyle = xlContinuous
     Worksheets("Toll Process").Range("A1:C1").Interior.Color = RGB(217, 225, 242)
     ActiveWindow.DisplayGridlines = False
     
+    ' Clear filters on the Filtered Data sheet (with error handling)
+    On Error Resume Next
     Worksheets("Filtered Data").ShowAllData
+    On Error GoTo 0
     If Worksheets("Filtered Data").AutoFilterMode Then
         Worksheets("Filtered Data").AutoFilterMode = False
     End If
@@ -268,10 +303,11 @@ Sub finalFilter()
     Worksheets("Toll Process").Range("B1").Value = "Total Amount"
     Worksheets("Toll Process").Range("C1").Value = "Date"
     
+    ' Apply date formatting and select the first cell
     Worksheets("Toll Process").Range("C1:C10000").NumberFormat = "mm/dd/yyyy"
-    
     Worksheets("Toll Process").Range("A1").Select
     
+    ' Protect all sheets with password "om"
     Worksheets("Toll Process").Protect "om"
     Worksheets("Filtered Data").Protect "om"
     Worksheets("Data").Protect "om"
@@ -279,21 +315,25 @@ Sub finalFilter()
 End Sub
 
 
+' Main automation routine that runs all processing steps in sequence
+' This is the primary subroutine called by the user interface
 Sub action()
     
+    ' Disable screen updates and alerts for better performance
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    importData
-    filteredData
-    formatData
-    ConvertDateFormat
-    finalFilter
-    ArrangeSheets
+    ' Execute the complete toll data processing workflow
+    importData          ' Import data from selected Excel file
+    filteredData        ' Filter data for debit transactions > 0
+    formatData          ' Group up to 8 entries per day and combine toll routes
+    ConvertDateFormat   ' Convert dates to mm/dd/yyyy format
+    finalFilter         ' Apply final filters and create output sheet
+    ArrangeSheets       ' Organize sheet tabs in proper order
     
-    
+    ' Return to Dashboard and re-enable screen updates
     Worksheets("Dashboard").Activate
-
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
+    
 End Sub
