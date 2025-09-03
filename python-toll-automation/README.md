@@ -1,130 +1,107 @@
-# Toll Automation FastAPI Service
+# 🚗 Toll Automation FastAPI Service
 
-A Python FastAPI microservice implementation of the VBA toll automation functionality. Processes toll transaction data from Excel files and outputs CSV reports.
+A containerized FastAPI microservice for processing toll transaction data with automatic deployment to AWS Lambda.
 
-## Features
+## ✨ Features
 
-- **FastAPI REST API**: Modern, fast web framework with automatic API documentation
-- **Excel Processing**: Handles .xlsx, .xls, and .xlsm files using pandas and openpyxl
-- **Data Transformation**: Replicates the VBA automation workflow:
+- **📄 Excel Processing**: Upload .xlsx/.xls/.xlsm files (max 5MB)
+- **🔄 Data Transformation**: 
   - Filters debit transactions > 0
-  - Groups up to 8 entries per day
-  - Combines toll routes and sums amounts
+  - Groups up to 8 toll entries per day
+  - Combines transaction IDs and calculates totals
   - Standardizes date formats (dd/mm/yyyy)
-- **CSV Output**: Returns processed data as downloadable CSV files
-- **Docker Support**: Ready for containerized deployment
-- **File Management**: Upload and download endpoints for file handling
+- **📊 CSV Export**: Download processed data as CSV
+- **🌐 Beautiful Web Interface**: Professional frontend with drag & drop
+- **☁️ Serverless Deployment**: Runs on AWS Lambda containers
+- **🚀 CI/CD**: Automated deployment via GitHub Actions
 
-## Quick Start
+## 🏗️ Architecture
+
+```
+GitHub → GitHub Actions → AWS ECR → AWS Lambda → API Gateway → Users
+```
+
+## 🚀 Quick Start
 
 ### Local Development
 
-1. **Install dependencies:**
+1. **Clone and run:**
    ```bash
+   git clone <your-repo-url>
+   cd python-toll-automation
    pip install -r requirements.txt
+   uvicorn app.main:app --reload
    ```
 
-2. **Run the server:**
+2. **Visit:** http://localhost:8000
+
+### Production Deployment
+
+1. **Set GitHub Secrets:**
+   - `AWS_ACCESS_KEY_ID`: Your AWS access key
+   - `AWS_SECRET_ACCESS_KEY`: Your AWS secret key
+
+2. **Push to main branch:**
    ```bash
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   git push origin main
    ```
 
-3. **Access the API:**
-   - API: http://localhost:8000
-   - Interactive docs: http://localhost:8000/docs
-   - Alternative docs: http://localhost:8000/redoc
+3. **GitHub Actions will automatically:**
+   - Build Docker container
+   - Push to ECR
+   - Deploy to Lambda
+   - Set up API Gateway
 
-### Docker Deployment
+## 🌐 Live Service
 
-1. **Build and run with Docker Compose:**
-   ```bash
-   docker-compose up --build
-   ```
+**URL:** https://[api-id].execute-api.ap-south-1.amazonaws.com/
 
-2. **Or build and run manually:**
-   ```bash
-   docker build -t toll-automation .
-   docker run -p 8000:8000 toll-automation
-   ```
+## 🔧 Configuration
 
-## API Endpoints
+- **Region:** ap-south-1 (Mumbai, India)
+- **Runtime:** Python 3.11 container
+- **Memory:** 1024 MB
+- **Timeout:** 300 seconds
+- **File Size Limit:** 5 MB
 
-### POST `/process-toll-data`
-Upload and process a toll transaction Excel file.
+## 📊 Usage
 
-**Request:**
-- File upload: Excel file (.xlsx, .xls, .xlsm)
+1. **Visit the web interface**
+2. **Drag or click to upload Excel file**
+3. **Wait for processing** (progress bar shows status)
+4. **Download CSV** automatically starts
 
-**Response:**
-- CSV file download with processed data
+## 💰 Cost
 
-### GET `/health`
-Health check endpoint.
+- **~₹5-15/month** for 100 requests
+- **Free tier:** 1M requests/month for first 12 months
 
-### GET `/processed-files`
-List all processed CSV files.
+## 🛠️ Development
 
-### GET `/download/{filename}`
-Download a specific processed CSV file.
-
-## Data Processing Workflow
-
-The service follows the same workflow as the original VBA automation:
-
-1. **Import Data**: Load Excel file and validate required columns
-2. **Filter Data**: Keep only debit transactions with amount > 0
-3. **Format Data**: 
-   - Group transactions by date (max 8 per day)
-   - Combine transaction IDs (last 4 digits)
-   - Sum amounts for grouped transactions
-4. **Convert Dates**: Standardize to dd/mm/yyyy format
-5. **Final Output**: Create CSV with columns:
-   - Toll Route (combined transaction IDs)
-   - Total Amount
-   - Date
-
-## Required Excel Columns
-
-The input Excel file must contain these columns:
-- `AMOUNT IN RS`
-- `TRANSACTIONTYPE` 
-- `TRANSACTION_DATE`
-- `TRANSACTIONID`
-
-## Project Structure
-
+### Project Structure
 ```
 python-toll-automation/
 ├── app/
-│   ├── __init__.py
 │   ├── main.py              # FastAPI application
 │   └── toll_processor.py    # Core processing logic
-├── uploads/                 # Temporary file uploads
-├── outputs/                 # Processed CSV files
-├── tests/                   # Test files
-├── requirements.txt         # Python dependencies
+├── templates/
+│   └── index.html          # Web interface
+├── .github/workflows/
+│   └── deploy.yml          # CI/CD pipeline
 ├── Dockerfile              # Container configuration
-├── docker-compose.yml      # Docker Compose setup
-└── README.md               # This file
+├── requirements.txt        # Python dependencies
+└── lambda_handler.py       # AWS Lambda entry point
 ```
 
-## Development
+### Required Excel Columns
+- `AMOUNT IN RS`
+- `TRANSACTIONTYPE`
+- `TRANSACTION_DATE`
+- `TRANSACTIONID`
 
-### Adding Tests
-```bash
-pytest tests/
-```
+## 🔒 Security
 
-### Code Style
-```bash
-black app/
-flake8 app/
-```
-
-## Deployment Considerations
-
-- Configure proper file cleanup policies for uploads/outputs directories
-- Set appropriate file size limits for uploads
-- Configure logging and monitoring
-- Use environment variables for configuration
-- Consider using a reverse proxy (nginx) for production
+- File type validation
+- File size limits (5MB)
+- Temporary file cleanup
+- AWS IAM role-based access

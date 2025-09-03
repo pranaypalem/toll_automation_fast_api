@@ -1,5 +1,7 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 import pandas as pd
 import io
 import os
@@ -21,7 +23,20 @@ OUTPUT_DIR = "outputs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-@app.get("/")
+# Setup templates and static files
+templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+templates = Jinja2Templates(directory=templates_dir)
+
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    """Serve the main frontend page"""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/api")
 async def root():
     return {"message": "Toll Automation API is running"}
 
@@ -35,8 +50,14 @@ async def process_toll_data(file: UploadFile = File(...)):
     Process toll transaction data from uploaded Excel file
     Returns processed data as CSV download
     """
+    # File validation
     if not file.filename.endswith(('.xlsx', '.xls', '.xlsm')):
         raise HTTPException(status_code=400, detail="File must be an Excel file (.xlsx, .xls, .xlsm)")
+    
+    # Read file content and check size (5MB limit)
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:  # 5MB limit
+        raise HTTPException(status_code=413, detail="File size must be less than 5MB")
     
     try:
         # Generate unique filename for processing
@@ -44,8 +65,7 @@ async def process_toll_data(file: UploadFile = File(...)):
         temp_filename = f"{file_id}_{file.filename}"
         upload_path = os.path.join(UPLOAD_DIR, temp_filename)
         
-        # Save uploaded file
-        content = await file.read()
+        # Save uploaded file (content already read for size check)
         with open(upload_path, "wb") as f:
             f.write(content)
         

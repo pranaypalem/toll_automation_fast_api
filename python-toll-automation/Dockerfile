@@ -1,26 +1,19 @@
-FROM python:3.11-slim
+# Use AWS Lambda Python base image
+FROM public.ecr.aws/lambda/python:3.11
 
-WORKDIR /app
+# Copy requirements first for better caching
+COPY requirements.txt ${LAMBDA_TASK_ROOT}
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 # Copy application code
-COPY app/ app/
-COPY uploads/ uploads/
-COPY outputs/ outputs/
+COPY app/ ${LAMBDA_TASK_ROOT}/app/
+COPY templates/ ${LAMBDA_TASK_ROOT}/templates/
+COPY lambda_handler.py ${LAMBDA_TASK_ROOT}
 
-# Create directories for uploads and outputs
-RUN mkdir -p uploads outputs
+# Create necessary directories
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/uploads ${LAMBDA_TASK_ROOT}/outputs
 
-# Expose port
-EXPOSE 8000
-
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Set the CMD to your handler
+CMD ["lambda_handler.lambda_handler"]
