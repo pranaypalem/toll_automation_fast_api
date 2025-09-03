@@ -1,22 +1,65 @@
-# Excel temporary files
-~$*
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Excel backup files
-*.tmp
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# VBA compiled files
-*.dll
-*.exe
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# System files
-Thumbs.db
+# OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Claude Code workspace files
-.claude/
-
-# Log files
+# Logs
 *.log
+logs/
 
-# Cache files
-*.cache
+# Local development files
+uploads/*
+outputs/*
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+
+# Docker
+.dockerignore
+
+# AWS
+.aws/
