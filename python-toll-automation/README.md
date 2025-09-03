@@ -37,20 +37,14 @@ GitHub → GitHub Actions → AWS ECR → AWS Lambda → API Gateway → Users
 
 ### Production Deployment
 
-1. **Set GitHub Secrets:**
-   - `AWS_ACCESS_KEY_ID`: Your AWS access key
-   - `AWS_SECRET_ACCESS_KEY`: Your AWS secret key
+This repository includes container-ready code for AWS Lambda deployment.
 
-2. **Push to main branch:**
-   ```bash
-   git push origin main
-   ```
+**Option 1: Manual Deployment** (Recommended)
+- See [DEPLOYMENT.md](./DEPLOYMENT.md) for step-by-step AWS deployment guide
 
-3. **GitHub Actions will automatically:**
-   - Build Docker container
-   - Push to ECR
-   - Deploy to Lambda
-   - Set up API Gateway
+**Option 2: CI/CD Pipeline**
+- GitHub Actions automatically runs tests and builds container
+- Manual deployment from built artifacts
 
 ## 🌐 Live Service
 
