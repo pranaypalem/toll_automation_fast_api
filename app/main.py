@@ -91,7 +91,7 @@ async def process_toll_data(file: UploadFile = File(...)) -> FileResponse:
             path=output_path,
             filename=f"processed_toll_data_"
             f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            media_type="text/csv"
+            media_type="text/csv",
         )
 
     except Exception as e:
