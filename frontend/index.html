@@ -213,6 +213,140 @@
             font-weight: bold;
         }
 
+        /* Authentication Styles */
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            background: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 1rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .auth-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .auth-form {
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+            font-size: 0.9rem;
+        }
+
+        .btn-logout {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .btn-logout:hover {
+            background: #c82333;
+        }
+
+        .upload-history {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .upload-history h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .history-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .history-info {
+            flex: 1;
+        }
+
+        .history-filename {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .history-meta {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .history-download {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .history-download:hover {
+            background: #218838;
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 30px 20px;
@@ -225,17 +359,80 @@
             .upload-area {
                 padding: 40px 20px;
             }
+
+            .user-info {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .history-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🚗 Toll Processor</h1>
-            <p>Transform your toll transaction data into organized reports</p>
+        <!-- Login/Signup Screen -->
+        <div id="authScreen" class="auth-screen">
+            <div class="header">
+                <h1>🚗 Toll Processor</h1>
+                <p>Sign in to access your file history and secure processing</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" onclick="showTab('login')">Login</button>
+                <button type="button" class="auth-tab" onclick="showTab('signup')">Sign Up</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="loginEmail">Email:</label>
+                    <input type="email" id="loginEmail" required placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password:</label>
+                    <input type="password" id="loginPassword" required placeholder="Enter your password">
+                </div>
+                <button type="submit" class="btn">Login</button>
+            </form>
+
+            <!-- Signup Form -->
+            <form id="signupForm" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="signupEmail">Email:</label>
+                    <input type="email" id="signupEmail" required placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password:</label>
+                    <input type="password" id="signupPassword" required placeholder="Create a password">
+                </div>
+                <button type="submit" class="btn">Sign Up</button>
+            </form>
         </div>
 
-        <form id="uploadForm" enctype="multipart/form-data">
+        <!-- Main App Screen -->
+        <div id="mainScreen" class="main-screen" style="display: none;">
+            <div class="header">
+                <h1>🚗 Toll Processor</h1>
+                <p>Transform your toll transaction data into organized reports</p>
+                <div class="user-info">
+                    <span id="userEmail"></span>
+                    <button onclick="logout()" class="btn-logout">Logout</button>
+                </div>
+            </div>
+
+            <!-- Upload History -->
+            <div id="uploadHistory" class="upload-history">
+                <h3>📁 Your Recent Uploads</h3>
+                <div id="historyList"></div>
+            </div>
+
+            <form id="uploadForm" enctype="multipart/form-data">
             <div class="upload-section">
                 <div class="upload-area" id="uploadArea">
                     <div class="upload-icon">📄</div>
@@ -263,9 +460,9 @@
             </div>
 
             <div class="status" id="status"></div>
-        </form>
+            </form>
 
-        <div class="features">
+            <div class="features">
             <h3>What this tool does:</h3>
             <ul>
                 <li>Filters debit transactions greater than zero</li>
@@ -278,8 +475,8 @@
     </div>
 
     <script>
-        // Configuration - API Gateway URL
-        const API_BASE_URL = 'https://097ytjiafd.execute-api.us-east-1.amazonaws.com/prod';
+        // Configuration - Local development URL
+        const API_BASE_URL = 'http://localhost:8000';
         
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');

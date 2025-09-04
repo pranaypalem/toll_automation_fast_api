@@ -1,17 +1,22 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from .toll_processor import TollProcessor
+from .database import get_db, create_tables, create_user, get_user_by_email, add_upload_record, get_user_uploads, User, UploadHistory
+from .auth import authenticate_user, create_access_token, get_current_user, optional_get_current_user
+from .models import UserCreate, UserLogin, Token, UserResponse, UserDashboard, UploadHistoryResponse
 
 app = FastAPI(
     title="Toll Automation API",
-    description="A FastAPI service for processing toll transaction data",
-    version="1.0.0",
+    description="A FastAPI service for processing toll transaction data with user authentication",
+    version="2.0.0",
 )
 
 # Add CORS middleware
@@ -22,6 +27,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize database tables on startup
+@app.on_event("startup")
+def startup_event():
+    create_tables()
 
 # Use local directories for development, /tmp for Lambda
 import os
@@ -44,13 +54,83 @@ async def root() -> dict[str, str]:
     return {"message": "Toll Automation API is running"}
 
 
+# Authentication endpoints
+@app.post("/auth/signup", response_model=Token)
+async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user"""
+    # Check if user already exists
+    if get_user_by_email(db, user_data.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+    
+    # Create new user
+    user = create_user(db, user_data.email, user_data.password)
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+
+@app.post("/auth/login", response_model=Token)
+async def login(user_data: UserLogin, db: Session = Depends(get_db)):
+    """Login user"""
+    user = authenticate_user(db, user_data.email, user_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    
+    # Update last login time
+    user.last_login = datetime.utcnow()
+    db.commit()
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+
+@app.get("/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current user information"""
+    return current_user
+
+
+@app.get("/dashboard", response_model=UserDashboard)
+async def get_user_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get user dashboard with upload history"""
+    recent_uploads = get_user_uploads(db, current_user.id, days=30)
+    
+    return {
+        "user": current_user,
+        "recent_uploads": recent_uploads,
+        "total_uploads": len(recent_uploads)
+    }
+
+
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 
 @app.post("/process-toll-data")
-async def process_toll_data(file: UploadFile = File(...)) -> FileResponse:
+async def process_toll_data(
+    file: UploadFile = File(...), 
+    current_user: Optional[User] = Depends(optional_get_current_user),
+    db: Session = Depends(get_db)
+) -> FileResponse:
     """
     Process toll transaction data from uploaded Excel file
     Returns processed data as CSV download
@@ -93,6 +173,16 @@ async def process_toll_data(file: UploadFile = File(...)) -> FileResponse:
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         processed_data.to_csv(output_path, index=False)
 
+        # Track upload in database if user is authenticated
+        if current_user:
+            add_upload_record(
+                db=db,
+                user_id=current_user.id,
+                original_filename=file.filename,
+                processed_filename=output_filename,
+                file_size=len(content)
+            )
+
         # Clean up uploaded file
         os.remove(upload_path)
 
@@ -122,8 +212,22 @@ async def list_processed_files() -> dict[str, list[str] | int]:
 
 
 @app.get("/download/{filename}")
-async def download_file(filename: str) -> FileResponse:
+async def download_file(
+    filename: str,
+    current_user: Optional[User] = Depends(optional_get_current_user),
+    db: Session = Depends(get_db)
+) -> FileResponse:
     """Download a previously processed CSV file"""
+    # If user is authenticated, verify they own this file
+    if current_user:
+        user_upload = db.query(UploadHistory).filter(
+            UploadHistory.user_id == current_user.id,
+            UploadHistory.processed_filename == filename
+        ).first()
+        
+        if not user_upload:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
     file_path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(file_path) or not filename.endswith(".csv"):
         raise HTTPException(status_code=404, detail="File not found")
