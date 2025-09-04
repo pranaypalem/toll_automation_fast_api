@@ -23,8 +23,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "uploads"
-OUTPUT_DIR = "outputs"
+UPLOAD_DIR = "/tmp/uploads"
+OUTPUT_DIR = "/tmp/outputs"
 
 # Ensure directories exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)

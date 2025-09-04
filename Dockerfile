@@ -15,8 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ${LAMBDA_TASK_ROOT}/app/
 COPY lambda_handler.py ${LAMBDA_TASK_ROOT}
 
-# Create necessary directories
-RUN mkdir -p ${LAMBDA_TASK_ROOT}/uploads ${LAMBDA_TASK_ROOT}/outputs
+# Note: Lambda will create /tmp directories at runtime
 
 # Set environment variables
 ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
