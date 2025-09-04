@@ -58,8 +58,16 @@ outputs/*
 *.xls
 *.xlsm
 
-# Docker
-.dockerignore
-
 # AWS
 .aws/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Testing and development artifacts
+test_*.html
+test_*.py
+test_*.csv
+*-setup-guide.md
+distribution-config.json
+setup-*.ps1

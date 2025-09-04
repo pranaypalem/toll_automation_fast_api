@@ -1,9 +1,6 @@
 import os
 import uuid
-import logging
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -75,37 +72,13 @@ async def process_toll_data(file: UploadFile = File(...)) -> FileResponse:
         temp_filename = f"{file_id}_{file.filename}"
         upload_path = os.path.join(UPLOAD_DIR, temp_filename)
 
-        # Debug: Log file info before writing
-        logger.info(f"Original file size: {len(content)} bytes")
-        logger.info(f"File type detected from browser: {file.content_type}")
-        logger.info(f"File name: {file.filename}")
-        
-        # Check if content looks like binary data
-        logger.info(f"First 20 bytes: {content[:20]}")
-        logger.info(f"Content starts with ZIP signature: {content.startswith(b'PK')}")
-        
         # Save uploaded file (content already read for size check)
         with open(upload_path, "wb") as f:
             f.write(content)
         
         # Verify file was written correctly
-        written_size = os.path.getsize(upload_path) if os.path.exists(upload_path) else 0
-        logger.info(f"File written to: {upload_path}")
-        logger.info(f"Written file size: {written_size} bytes")
-        logger.info(f"Size match: {written_size == len(content)}")
-        
-        if not os.path.exists(upload_path) or written_size != len(content):
-            raise HTTPException(status_code=500, detail=f"File upload verification failed. Expected: {len(content)}, Got: {written_size}")
-        
-        # Additional check: verify the written file has correct format
-        with open(upload_path, "rb") as f:
-            written_content = f.read(20)
-            logger.info(f"Written file first 20 bytes: {written_content}")
-            logger.info(f"Written file has ZIP signature: {written_content.startswith(b'PK')}")
-            
-            if not written_content.startswith(b'PK'):
-                logger.error("Written file does not have Excel/ZIP signature!")
-                raise HTTPException(status_code=500, detail="File appears corrupted after upload - missing ZIP signature")
+        if not os.path.exists(upload_path) or os.path.getsize(upload_path) != len(content):
+            raise HTTPException(status_code=500, detail="File upload verification failed")
         
         # Additional file format validation
         if not file.filename.lower().endswith(('.xlsx', '.xls', '.xlsm')):
