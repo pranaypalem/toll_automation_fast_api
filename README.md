@@ -4,7 +4,7 @@
 
 [![Deploy Frontend to S3](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml/badge.svg?branch=main)](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml)
 
-A serverless application that processes toll transaction data from Excel files and returns processed CSV results.
+A serverless web application that processes toll transaction data from Excel files with user authentication, persistent storage, and automated deployment. Transform your toll data into organized CSV reports with secure cloud processing.
 
 ## 🚀 Live Application
 
@@ -15,10 +15,14 @@ The application is served through AWS CloudFront CDN for improved performance, s
 
 ## ✨ Features
 
+- 🔐 **User Authentication**: Secure login system with JWT tokens
 - 📊 **Excel Processing**: Handles `.xlsx`, `.xls`, `.xlsm` files and HTML/XML formats
-- 🚀 **Serverless**: AWS Lambda + API Gateway + S3
+- ☁️ **S3 Storage**: Persistent file storage with presigned download URLs
+- 📚 **Upload History**: Track processing history with file management
+- 🚀 **Serverless**: AWS Lambda + API Gateway + S3 + CloudFront
 - 🔄 **Auto Deployment**: GitHub Actions CI/CD pipeline
-- 🌐 **Web Interface**: Simple file upload and download
+- 🌐 **Web Interface**: Responsive frontend with drag-and-drop upload
+- 🔒 **Secure Downloads**: Time-limited presigned URLs for file access
 
 ## 🏗️ Architecture
 
@@ -73,24 +77,31 @@ Push to `main` branch automatically triggers:
 
 ## 🔄 How It Works
 
-1. Upload Excel file via web interface
-2. System detects file format (Excel, HTML, CSV, etc.)
-3. Processes toll transaction data
-4. Returns downloadable CSV file
+1. **Sign up** or **login** to access the secure platform
+2. **Upload** Excel files via drag-and-drop or file selection
+3. **Process** data automatically with format detection
+4. **Store** results securely in AWS S3 cloud storage
+5. **Download** processed CSV files with time-limited secure links
+6. **Track** upload history and manage your processed files
 
 ## 📁 Project Structure
 
 ```
 toll_automation_fast_api/
 ├── app/
-│   ├── main.py              # FastAPI application
-│   └── toll_processor.py    # Data processing logic
+│   ├── main.py              # FastAPI application & API routes
+│   ├── auth.py              # JWT authentication & user management
+│   ├── database.py          # SQLAlchemy models & database operations
+│   ├── models.py            # Pydantic request/response models
+│   ├── s3_service.py        # AWS S3 integration & file storage
+│   ├── database_backup.py   # Database persistence for Lambda
+│   └── toll_processor.py    # Excel/CSV data processing logic
 ├── frontend/
-│   └── index.html           # Web interface
-├── .github/workflows/       # CI/CD pipelines
+│   └── index.html           # Responsive web interface
+├── .github/workflows/       # CI/CD pipelines for AWS deployment
 ├── lambda_handler.py        # AWS Lambda entry point
-├── requirements.txt         # Dependencies
-└── Dockerfile              # Lambda container
+├── requirements.txt         # Python dependencies
+└── Dockerfile              # Lambda container configuration
 ```
 
 ## 🤝 Contributing
