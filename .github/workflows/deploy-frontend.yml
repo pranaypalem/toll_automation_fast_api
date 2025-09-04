@@ -39,8 +39,9 @@ jobs:
         echo "✅ Frontend deployed successfully!"
         echo "🔗 Website URL: http://$S3_BUCKET.s3-website-$AWS_REGION.amazonaws.com"
 
-    - name: Invalidate CloudFront cache (if applicable)
+    - name: Invalidate CloudFront cache
       continue-on-error: true
       run: |
-        echo "Note: Add CloudFront distribution ID to invalidate cache if using CloudFront"
-        # aws cloudfront create-invalidation --distribution-id YOUR_DISTRIBUTION_ID --paths "/*"
+        echo "🔄 Invalidating CloudFront cache..."
+        aws cloudfront create-invalidation --distribution-id E2CNUXQO7LSU97 --paths "/*"
+        echo "✅ CloudFront invalidation initiated"
