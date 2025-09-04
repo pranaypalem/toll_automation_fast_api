@@ -12,6 +12,8 @@ from .toll_processor import TollProcessor
 from .database import get_db, create_tables, create_user, get_user_by_email, add_upload_record, get_user_uploads, User, UploadHistory
 from .auth import authenticate_user, create_access_token, get_current_user, optional_get_current_user
 from .models import UserCreate, UserLogin, Token, UserResponse, UserDashboard, UploadHistoryResponse
+from .s3_service import s3_service
+from .database_backup import db_backup
 
 app = FastAPI(
     title="Toll Automation API",
@@ -31,7 +33,17 @@ app.add_middleware(
 # Initialize database tables on startup
 @app.on_event("startup")
 def startup_event():
+    # In Lambda, try to restore database from S3 backup
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        db_backup.restore_database_from_s3()
+    
     create_tables()
+
+# Backup database on shutdown (for Lambda)
+@app.on_event("shutdown")
+def shutdown_event():
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        db_backup.backup_database_to_s3()
 
 # Use local directories for development, /tmp for Lambda
 import os
@@ -70,6 +82,10 @@ async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     
     # Create access token
     access_token = create_access_token(data={"sub": user.email})
+    
+    # Backup database after user creation (in Lambda)
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        db_backup.backup_database_to_s3()
     
     return {
         "access_token": access_token,
@@ -173,15 +189,29 @@ async def process_toll_data(
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         processed_data.to_csv(output_path, index=False)
 
-        # Track upload in database if user is authenticated
+        # Upload to S3 if user is authenticated
+        s3_key = None
         if current_user:
-            add_upload_record(
-                db=db,
-                user_id=current_user.id,
-                original_filename=file.filename,
-                processed_filename=output_filename,
-                file_size=len(content)
-            )
+            s3_key = s3_service.generate_s3_key(current_user.id, output_filename)
+            if s3_service.upload_file(output_path, s3_key):
+                # Track upload in database with S3 key
+                add_upload_record(
+                    db=db,
+                    user_id=current_user.id,
+                    original_filename=file.filename,
+                    processed_filename=output_filename,
+                    file_size=len(content),
+                    s3_key=s3_key
+                )
+            else:
+                # Fallback: still track without S3 key if upload fails
+                add_upload_record(
+                    db=db,
+                    user_id=current_user.id,
+                    original_filename=file.filename,
+                    processed_filename=output_filename,
+                    file_size=len(content)
+                )
 
         # Clean up uploaded file
         os.remove(upload_path)
@@ -216,9 +246,43 @@ async def download_file(
     filename: str,
     current_user: Optional[User] = Depends(optional_get_current_user),
     db: Session = Depends(get_db)
+) -> dict:
+    """Get download URL for a previously processed CSV file"""
+    # If user is authenticated, verify they own this file and get S3 key
+    if current_user:
+        user_upload = db.query(UploadHistory).filter(
+            UploadHistory.user_id == current_user.id,
+            UploadHistory.processed_filename == filename
+        ).first()
+        
+        if not user_upload:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # If file has S3 key, generate presigned URL
+        if user_upload.s3_key:
+            download_url = s3_service.generate_presigned_url(user_upload.s3_key, expiration=3600)
+            if download_url:
+                return {"download_url": download_url, "expires_in": 3600}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to generate download URL")
+    
+    # Fallback: check for local file
+    file_path = os.path.join(OUTPUT_DIR, filename)
+    if not os.path.exists(file_path) or not filename.endswith(".csv"):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # For non-authenticated users or files without S3, use local file download
+    return {"download_url": f"/download-direct/{filename}", "expires_in": None}
+
+
+@app.get("/download-direct/{filename}")
+async def download_file_direct(
+    filename: str,
+    current_user: Optional[User] = Depends(optional_get_current_user),
+    db: Session = Depends(get_db)
 ) -> FileResponse:
-    """Download a previously processed CSV file"""
-    # If user is authenticated, verify they own this file
+    """Direct download for local files (fallback)"""
+    # Same security checks as original download
     if current_user:
         user_upload = db.query(UploadHistory).filter(
             UploadHistory.user_id == current_user.id,

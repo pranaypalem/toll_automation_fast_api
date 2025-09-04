@@ -7,10 +7,13 @@ from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
 
 # Database setup
-DATABASE_URL = "sqlite:///./toll_automation.db"
+DATABASE_URL = "sqlite:///./toll_automation.db"  # Local development
 if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    # In Lambda, use /tmp directory
-    DATABASE_URL = "sqlite:///tmp/toll_automation.db"
+    # In Lambda, use managed database if available, otherwise temporary SQLite
+    if os.environ.get("DATABASE_URL"):
+        DATABASE_URL = os.environ.get("DATABASE_URL")
+    else:
+        DATABASE_URL = "sqlite:///tmp/toll_automation.db"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

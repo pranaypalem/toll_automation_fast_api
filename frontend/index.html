@@ -803,15 +803,26 @@
                 });
 
                 if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
+                    const data = await response.json();
+                    
+                    // Use the provided download URL (either S3 presigned URL or direct download)
+                    const downloadUrl = data.download_url.startsWith('http') ? 
+                        data.download_url : 
+                        `${API_BASE_URL}${data.download_url}`;
+                    
+                    // Create download link
                     const a = document.createElement('a');
-                    a.href = url;
+                    a.href = downloadUrl;
                     a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
+                    
+                    if (data.expires_in) {
+                        showStatus(`✅ Download started (link expires in ${data.expires_in/60} minutes)`, 'success');
+                    } else {
+                        showStatus('✅ Download started', 'success');
+                    }
                 } else {
                     showStatus('❌ Failed to download file', 'error');
                 }
