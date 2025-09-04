@@ -58,13 +58,55 @@ class TollProcessor:
         """
         Import data from Excel file (equivalent to VBA importData())
         """
+        import os
+        
         try:
+            # Verify file exists and has content
+            if not os.path.exists(file_path):
+                raise ValueError(f"File not found: {file_path}")
+            
+            file_size = os.path.getsize(file_path)
+            if file_size == 0:
+                raise ValueError("File is empty")
+                
+            logger.info(f"Reading file: {file_path} (size: {file_size} bytes)")
+            
             # Try reading with different engines to handle various Excel formats
+            df = None
+            last_error = None
+            
+            # First try with openpyxl for .xlsx files
             try:
+                logger.info("Attempting to read with openpyxl engine")
                 df = pd.read_excel(file_path, engine="openpyxl")
-            except Exception:
-                df = pd.read_excel(file_path, engine="xlrd")
+                logger.info("Successfully read with openpyxl")
+            except Exception as e:
+                last_error = e
+                logger.warning(f"openpyxl failed: {str(e)}")
+                
+                # Try with xlrd for .xls files
+                try:
+                    logger.info("Attempting to read with xlrd engine")
+                    df = pd.read_excel(file_path, engine="xlrd")
+                    logger.info("Successfully read with xlrd")
+                except Exception as e2:
+                    last_error = e2
+                    logger.warning(f"xlrd failed: {str(e2)}")
+                    
+                    # Try with calamine engine as last resort
+                    try:
+                        logger.info("Attempting to read with calamine engine")
+                        df = pd.read_excel(file_path, engine="calamine")
+                        logger.info("Successfully read with calamine")
+                    except Exception as e3:
+                        last_error = e3
+                        logger.error(f"All engines failed. Last error: {str(e3)}")
+            
+            if df is None:
+                raise ValueError(f"Could not read Excel file with any engine. Error: {str(last_error)}")
 
+            logger.info(f"Excel file loaded successfully with {len(df)} rows and {len(df.columns)} columns")
+            
             # Clean column names (remove extra spaces, standardize case)
             df.columns = df.columns.str.strip().str.upper()
 
@@ -73,11 +115,13 @@ class TollProcessor:
                 col for col in self.required_columns if col not in df.columns
             ]
             if missing_cols:
-                raise ValueError(f"Missing required columns: {missing_cols}")
+                available_cols = list(df.columns)
+                raise ValueError(f"Missing required columns: {missing_cols}. Available columns: {available_cols}")
 
             return df
 
         except Exception as e:
+            logger.error(f"Error importing Excel file: {str(e)}")
             raise ValueError(f"Error importing Excel file: {str(e)}")
 
     def _filter_data(self, df: pd.DataFrame) -> pd.DataFrame:

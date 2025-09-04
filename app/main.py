@@ -67,6 +67,14 @@ async def process_toll_data(file: UploadFile = File(...)) -> FileResponse:
         # Save uploaded file (content already read for size check)
         with open(upload_path, "wb") as f:
             f.write(content)
+        
+        # Verify file was written correctly
+        if not os.path.exists(upload_path) or os.path.getsize(upload_path) != len(content):
+            raise HTTPException(status_code=500, detail="File upload verification failed")
+        
+        # Additional file format validation
+        if not file.filename.lower().endswith(('.xlsx', '.xls', '.xlsm')):
+            raise HTTPException(status_code=400, detail="Invalid file format. Please upload .xlsx, .xls, or .xlsm files only")
 
         # Process the file
         processor = TollProcessor()
