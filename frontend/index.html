@@ -267,6 +267,36 @@
             border-color: #667eea;
         }
 
+        .form-select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+            background-color: white;
+            cursor: pointer;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-select option:disabled {
+            color: #999;
+            background-color: #f5f5f5;
+        }
+
+        .fastag-selection {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
         .user-info {
             display: flex;
             justify-content: space-between;
@@ -299,8 +329,15 @@
         }
 
         .upload-history h3 {
-            margin-bottom: 15px;
+            margin-bottom: 5px;
             color: #333;
+        }
+
+        .history-subtitle {
+            margin: 0 0 15px 0;
+            color: #666;
+            font-size: 0.9rem;
+            font-style: italic;
         }
 
         .history-item {
@@ -413,6 +450,9 @@
                 </div>
                 <button type="submit" class="btn">Sign Up</button>
             </form>
+            
+            <!-- Auth Status Messages -->
+            <div class="status" id="authStatus"></div>
         </div>
 
         <!-- Main App Screen -->
@@ -429,6 +469,7 @@
             <!-- Upload History -->
             <div id="uploadHistory" class="upload-history">
                 <h3>📁 Your Recent Uploads</h3>
+                <p class="history-subtitle">Showing last 30 days (max 10 files)</p>
                 <div id="historyList"></div>
             </div>
 
@@ -447,6 +488,18 @@
                 <p><strong>Name:</strong> <span id="fileName"></span></p>
                 <p><strong>Size:</strong> <span id="fileSize"></span></p>
                 <p><strong>Type:</strong> <span id="fileType"></span></p>
+            </div>
+
+            <div class="fastag-selection" id="fastagSelection" style="display: none;">
+                <div class="form-group">
+                    <label for="fastagProvider">Select your FASTag Provider:</label>
+                    <select id="fastagProvider" class="form-select" required>
+                        <option value="">-- Choose FASTag Provider --</option>
+                        <option value="icici">ICICI</option>
+                        <option value="hdfc" disabled>HDFC (Coming Soon)</option>
+                        <option value="sbi" disabled>SBI (Coming Soon)</option>
+                    </select>
+                </div>
             </div>
 
             <button type="submit" class="btn" id="processBtn" disabled>
@@ -489,6 +542,23 @@
 
         let selectedFile = null;
 
+        // Check if user can process (file selected and ICICI FASTag selected)
+        function checkCanProcess() {
+            const fastagProvider = document.getElementById('fastagProvider').value;
+            const hasFile = selectedFile !== null;
+            const hasValidFastag = fastagProvider === 'icici';
+            
+            processBtn.disabled = !(hasFile && hasValidFastag);
+            
+            if (hasFile && !hasValidFastag) {
+                processBtn.textContent = 'Select ICICI FASTag to Process';
+            } else if (hasFile && hasValidFastag) {
+                processBtn.textContent = 'Process Toll Data';
+            } else {
+                processBtn.textContent = 'Process Toll Data';
+            }
+        }
+
         // Make upload area clickable
         uploadArea.addEventListener('click', () => {
             fileInput.click();
@@ -523,6 +593,11 @@
             }
         });
 
+        // Handle FASTag provider selection change
+        document.getElementById('fastagProvider').addEventListener('change', () => {
+            checkCanProcess();
+        });
+
         // Handle file selection
         function handleFileSelect(file) {
             // Validate file type
@@ -550,9 +625,12 @@
             document.getElementById('fileSize').textContent = formatFileSize(file.size);
             document.getElementById('fileType').textContent = file.type || 'Excel Spreadsheet';
             
-            // Show file info and enable button
+            // Show file info and FASTag selection
             fileInfo.style.display = 'block';
-            processBtn.disabled = false;
+            document.getElementById('fastagSelection').style.display = 'block';
+            
+            // Don't enable process button yet - user must select FASTag
+            checkCanProcess();
             
             // Hide any previous status
             hideStatus();
@@ -568,6 +646,12 @@
             
             if (!selectedFile) {
                 showStatus('❌ Please select a file first.', 'error');
+                return;
+            }
+
+            const fastagProvider = document.getElementById('fastagProvider').value;
+            if (fastagProvider !== 'icici') {
+                showStatus('❌ Please select ICICI as your FASTag provider to proceed.', 'error');
                 return;
             }
 
@@ -589,8 +673,14 @@
                 const formData = new FormData();
                 formData.append('file', selectedFile);
 
+                const headers = {};
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+
                 const response = await fetch(`${API_BASE_URL}/process-toll-data`, {
                     method: 'POST',
+                    headers: headers,
                     body: formData
                 });
 
@@ -612,6 +702,11 @@
                     window.URL.revokeObjectURL(url);
 
                     showStatus(`✅ Success! Your processed file "${filename}" has been downloaded.`, 'success');
+                    
+                    // Refresh dashboard if user is authenticated
+                    if (authToken && currentUser) {
+                        loadDashboard();
+                    }
                 } else {
                     const errorData = await response.json();
                     showStatus(`❌ Processing failed: ${errorData.detail || 'Unknown error'}`, 'error');
@@ -648,6 +743,286 @@
         function hideStatus() {
             status.style.display = 'none';
         }
+
+        function showAuthStatus(message, type) {
+            const authStatus = document.getElementById('authStatus');
+            authStatus.textContent = message;
+            authStatus.className = `status ${type}`;
+            authStatus.style.display = 'block';
+        }
+
+        function hideAuthStatus() {
+            const authStatus = document.getElementById('authStatus');
+            authStatus.style.display = 'none';
+        }
+
+        // Authentication functions
+        let authToken = null;
+        let currentUser = null;
+
+        // Global functions - explicitly attach to window
+        window.showTab = function(tab) {
+            console.log('Switching to tab:', tab);
+            const tabs = document.querySelectorAll('.auth-tab');
+            const forms = document.querySelectorAll('.auth-form');
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            forms.forEach(f => f.style.display = 'none');
+            
+            document.querySelector(`[onclick="showTab('${tab}')"]`).classList.add('active');
+            const targetForm = document.getElementById(tab + 'Form');
+            targetForm.style.display = 'block';
+            console.log('Showing form:', targetForm);
+            
+            // Clear any previous status messages
+            hideAuthStatus();
+        };
+
+        window.logout = function() {
+            console.log('Logging out...');
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('authToken');
+            showAuthScreen();
+            
+            // Clear forms
+            document.getElementById('loginForm').reset();
+            document.getElementById('signupForm').reset();
+            hideStatus();
+            hideAuthStatus();
+        };
+
+        window.downloadFile = async function(filename) {
+            console.log('Downloading file:', filename);
+            try {
+                const response = await fetch(`${API_BASE_URL}/download/${filename}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    showStatus('❌ Failed to download file', 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Download error: ${error.message}`, 'error');
+            }
+        };
+
+        // Check if user is already logged in
+        function checkAuthStatus() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                authToken = token;
+                verifyToken();
+            }
+        }
+
+        // Verify token with server
+        async function verifyToken() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    currentUser = await response.json();
+                    showMainScreen();
+                    loadDashboard();
+                } else {
+                    logout();
+                }
+            } catch (error) {
+                console.error('Token verification failed:', error);
+                logout();
+            }
+        }
+
+
+        // Handle login form submission
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            console.log('Login form submitted');
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            console.log('Login attempt for email:', email);
+            
+            const loginBtn = e.target.querySelector('button[type="submit"]');
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.access_token;
+                    currentUser = data.user;
+                    localStorage.setItem('authToken', authToken);
+                    showMainScreen();
+                    loadDashboard();
+                } else {
+                    showAuthStatus(`❌ Login failed: ${data.detail || 'Invalid credentials'}`, 'error');
+                }
+            } catch (error) {
+                showAuthStatus(`❌ Network error: ${error.message}`, 'error');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+        });
+
+        // Handle signup form submission
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            console.log('Signup form submitted');
+            
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            console.log('Signup attempt for email:', email);
+            
+            const signupBtn = e.target.querySelector('button[type="submit"]');
+            signupBtn.disabled = true;
+            signupBtn.textContent = 'Creating account...';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.access_token;
+                    currentUser = data.user;
+                    localStorage.setItem('authToken', authToken);
+                    showMainScreen();
+                    loadDashboard();
+                } else {
+                    showAuthStatus(`❌ Signup failed: ${data.detail || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showAuthStatus(`❌ Network error: ${error.message}`, 'error');
+            } finally {
+                signupBtn.disabled = false;
+                signupBtn.textContent = 'Sign Up';
+            }
+        });
+
+        // Show main screen
+        function showMainScreen() {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('mainScreen').style.display = 'block';
+            document.getElementById('userEmail').textContent = currentUser.email;
+        }
+
+        // Show auth screen
+        function showAuthScreen() {
+            document.getElementById('authScreen').style.display = 'block';
+            document.getElementById('mainScreen').style.display = 'none';
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/dashboard`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const dashboard = await response.json();
+                    displayUploadHistory(dashboard.recent_uploads);
+                }
+            } catch (error) {
+                console.error('Failed to load dashboard:', error);
+            }
+        }
+
+        // Display upload history
+        function displayUploadHistory(uploads) {
+            const historyList = document.getElementById('historyList');
+            
+            if (!uploads || uploads.length === 0) {
+                historyList.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No uploads yet. Upload your first file to get started!</p>';
+                return;
+            }
+            
+            let historyHTML = uploads.map(upload => `
+                <div class="history-item">
+                    <div class="history-info">
+                        <div class="history-filename">${upload.original_filename}</div>
+                        <div class="history-meta">
+                            ${new Date(upload.upload_date).toLocaleDateString()} • ${formatFileSize(upload.file_size)}
+                        </div>
+                    </div>
+                    <button class="history-download" onclick="downloadFile('${upload.processed_filename}')">
+                        Download
+                    </button>
+                </div>
+            `).join('');
+
+            // Add info message if we're showing the maximum number of files
+            if (uploads.length === 10) {
+                historyHTML += '<p style="color: #999; font-size: 0.85rem; text-align: center; margin-top: 15px; font-style: italic;">Showing recent 10 files. Older files are automatically cleaned up.</p>';
+            }
+            
+            historyList.innerHTML = historyHTML;
+        }
+
+
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded, initializing app...');
+            checkAuthStatus();
+            
+            // Add debugging for form submissions
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            
+            console.log('Login form:', loginForm);
+            console.log('Signup form:', signupForm);
+            
+            if (loginForm) {
+                console.log('Login form event listener attached');
+            }
+            if (signupForm) {
+                console.log('Signup form event listener attached');
+            }
+        });
+
+        // Debug: Log that script has loaded
+        console.log('Script loaded at:', new Date().toISOString());
+        console.log('Global showTab function:', typeof window.showTab);
     </script>
 </body>
 </html>

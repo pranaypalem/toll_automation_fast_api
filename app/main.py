@@ -110,8 +110,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 @app.get("/dashboard", response_model=UserDashboard)
 async def get_user_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get user dashboard with upload history"""
-    recent_uploads = get_user_uploads(db, current_user.id, days=30)
+    """Get user dashboard with upload history (last 30 days, max 10 items)"""
+    recent_uploads = get_user_uploads(db, current_user.id, days=30, limit=10)
     
     return {
         "user": current_user,

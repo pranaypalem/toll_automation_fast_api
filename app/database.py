@@ -81,13 +81,13 @@ def create_user(db, email: str, password: str):
     return db_user
 
 
-def get_user_uploads(db, user_id: int, days: int = 30):
-    """Get user's upload history from past N days"""
+def get_user_uploads(db, user_id: int, days: int = 30, limit: int = 10):
+    """Get user's upload history from past N days, limited to max items"""
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     return db.query(UploadHistory).filter(
         UploadHistory.user_id == user_id,
         UploadHistory.upload_date >= cutoff_date
-    ).order_by(UploadHistory.upload_date.desc()).all()
+    ).order_by(UploadHistory.upload_date.desc()).limit(limit).all()
 
 
 def add_upload_record(db, user_id: int, original_filename: str, 
