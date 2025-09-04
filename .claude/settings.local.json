@@ -57,7 +57,8 @@
       "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)",
       "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api\\app/**)",
       "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)",
-      "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)"
+      "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)",
+      "Bash(git clean:*)"
     ],
     "deny": [],
     "ask": []
