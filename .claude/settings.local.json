@@ -11,7 +11,10 @@
       "Bash(isort:*)",
       "Bash(flake8:*)",
       "Bash(mypy:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(docker build:*)"
     ],
     "deny": [],
     "ask": []
