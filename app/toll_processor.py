@@ -71,68 +71,76 @@ class TollProcessor:
                 
             logger.info(f"Reading file: {file_path} (size: {file_size} bytes)")
             
-            # Determine engine based on file extension
+            # Detect actual file format by reading file headers
+            actual_format = self._detect_file_format(file_path)
             file_ext = file_path.lower().split('.')[-1]
-            logger.info(f"File extension detected: {file_ext}")
+            logger.info(f"File extension: {file_ext}, Detected format: {actual_format}")
+            
+            # Warn if extension doesn't match detected format
+            if actual_format and actual_format != file_ext:
+                logger.warning(f"File extension '{file_ext}' doesn't match detected format '{actual_format}'. File may have incorrect extension.")
             
             df = None
             last_error = None
+            engines_to_try = []
             
-            # Try appropriate engine first based on file extension
-            if file_ext in ['xlsx', 'xlsm']:
-                # Try openpyxl for newer Excel formats
-                try:
-                    logger.info("Attempting to read .xlsx/.xlsm file with openpyxl engine")
-                    df = pd.read_excel(file_path, engine="openpyxl")
-                    logger.info("Successfully read with openpyxl")
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"openpyxl failed: {str(e)}")
-                    # For .xlsx files, also try xlrd as fallback
-                    try:
-                        logger.info("Fallback: Attempting to read with xlrd engine")
-                        df = pd.read_excel(file_path, engine="xlrd") 
-                        logger.info("Successfully read with xlrd fallback")
-                    except Exception as e2:
-                        last_error = e2
-                        logger.warning(f"xlrd fallback failed: {str(e2)}")
-                        
-            elif file_ext == 'xls':
-                # Try xlrd for older Excel formats
-                try:
-                    logger.info("Attempting to read .xls file with xlrd engine")
-                    df = pd.read_excel(file_path, engine="xlrd")
-                    logger.info("Successfully read with xlrd")
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"xlrd failed: {str(e)}")
-                    # For .xls files, try openpyxl as fallback
-                    try:
-                        logger.info("Fallback: Attempting to read with openpyxl engine")
-                        df = pd.read_excel(file_path, engine="openpyxl")
-                        logger.info("Successfully read with openpyxl fallback")
-                    except Exception as e2:
-                        last_error = e2
-                        logger.warning(f"openpyxl fallback failed: {str(e2)}")
+            # Determine engines to try based on detected format and extension
+            if actual_format == 'xlsx' or file_ext in ['xlsx', 'xlsm']:
+                engines_to_try = ['openpyxl', 'xlrd']
+            elif actual_format == 'xls' or file_ext == 'xls':
+                engines_to_try = ['xlrd', 'openpyxl']
+            elif actual_format == 'csv':
+                # File detected as CSV, skip Excel engines
+                engines_to_try = []
             else:
-                # Unknown extension, try openpyxl first
+                # If detection failed, try both engines
+                engines_to_try = ['openpyxl', 'xlrd']
+            
+            # Try engines in order of preference
+            for engine in engines_to_try:
                 try:
-                    logger.info("Unknown extension, trying openpyxl first")
-                    df = pd.read_excel(file_path, engine="openpyxl")
-                    logger.info("Successfully read with openpyxl")
+                    logger.info(f"Attempting to read file with {engine} engine")
+                    df = pd.read_excel(file_path, engine=engine)
+                    logger.info(f"Successfully read with {engine}")
+                    break
                 except Exception as e:
                     last_error = e
-                    logger.warning(f"openpyxl failed: {str(e)}")
+                    logger.warning(f"{engine} failed: {str(e)}")
+                    continue
+            
+            # Try reading as CSV if detected as CSV or if Excel engines failed for .xls files
+            if df is None and (actual_format == 'csv' or file_ext == 'xls'):
+                try:
+                    logger.info("Attempting to read as CSV format")
+                    df = pd.read_csv(file_path, encoding='utf-8')
+                    logger.info("Successfully read as CSV format")
+                except UnicodeDecodeError:
                     try:
-                        logger.info("Fallback: Attempting to read with xlrd engine")
-                        df = pd.read_excel(file_path, engine="xlrd")
-                        logger.info("Successfully read with xlrd fallback")
-                    except Exception as e2:
-                        last_error = e2
-                        logger.warning(f"xlrd fallback failed: {str(e2)}")
+                        # Try different encoding
+                        logger.info("UTF-8 failed, trying latin-1 encoding")
+                        df = pd.read_csv(file_path, encoding='latin-1')
+                        logger.info("Successfully read as CSV with latin-1 encoding")
+                    except Exception as e:
+                        logger.warning(f"CSV read with latin-1 failed: {str(e)}")
+                        # Try tab-separated values
+                        try:
+                            logger.info("Trying tab-separated format")
+                            df = pd.read_csv(file_path, sep='\t', encoding='utf-8')
+                            logger.info("Successfully read as TSV format")
+                        except Exception as e2:
+                            logger.warning(f"TSV read failed: {str(e2)}")
+                except Exception as e:
+                    logger.warning(f"CSV read failed: {str(e)}")
             
             if df is None:
-                raise ValueError(f"Could not read Excel file with any engine. Last error: {str(last_error)}")
+                # Provide more helpful error message
+                error_msg = f"Could not read file with any supported format (Excel engines or CSV). "
+                if actual_format and actual_format != file_ext:
+                    error_msg += f"The file appears to be in '{actual_format}' format but has a '{file_ext}' extension. "
+                    error_msg += "The file may be corrupted, have an incorrect file extension, or be in an unsupported format. "
+                    error_msg += "Please ensure the file is a valid Excel file (.xlsx, .xls) or try saving it in a different format. "
+                error_msg += f"Last error: {str(last_error)}"
+                raise ValueError(error_msg)
 
             logger.info(f"Excel file loaded successfully with {len(df)} rows and {len(df.columns)} columns")
             
@@ -152,6 +160,52 @@ class TollProcessor:
         except Exception as e:
             logger.error(f"Error importing Excel file: {str(e)}")
             raise ValueError(f"Error importing Excel file: {str(e)}")
+
+    def _detect_file_format(self, file_path: str) -> str:
+        """
+        Detect actual file format by reading file headers/magic bytes
+        Returns 'xlsx', 'xls', or None if unknown
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                # Read first few bytes to check file signature
+                header = f.read(8)
+                
+                # ZIP signature (used by .xlsx, .xlsm) - starts with 'PK'
+                if header.startswith(b'PK'):
+                    return 'xlsx'
+                
+                # Old Excel binary format (.xls) - starts with specific signatures
+                # Microsoft Office documents often start with D0CF11E0 (OLE compound document)
+                if header.startswith(b'\xd0\xcf\x11\xe0'):
+                    return 'xls'
+                
+                # Additional signatures for Excel files
+                if header.startswith(b'\x09\x08'):  # Some .xls files
+                    return 'xls'
+                    
+                # Check for XML-based files (sometimes .xls files are actually XML)
+                if header.startswith(b'<?xml') or header.startswith(b'<html') or header.startswith(b'<HTML'):
+                    # This might be an HTML/XML file with wrong extension
+                    logger.warning("File appears to be HTML/XML format, not Excel")
+                    return 'xml'
+                
+                # Check for CSV-like content (text files saved as .xls)
+                try:
+                    # Try to decode as text to check if it looks like CSV
+                    text_content = header.decode('utf-8', errors='ignore')
+                    if ',' in text_content or '\t' in text_content:
+                        logger.info("File appears to contain delimited text (CSV/TSV)")
+                        return 'csv'
+                except Exception:
+                    pass
+                
+                logger.info(f"Unknown file signature: {header}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Could not detect file format: {str(e)}")
+            return None
 
     def _filter_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
