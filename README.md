@@ -1,8 +1,8 @@
 # Toll Automation FastAPI
 
-[![Deploy Lambda Function](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-lambda.yml/badge.svg)](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-lambda.yml)
+[![Deploy Lambda Function](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-lambda.yml/badge.svg?branch=main)](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-lambda.yml)
 
-[![Deploy Frontend to S3](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml)
+[![Deploy Frontend to S3](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml/badge.svg?branch=main)](https://github.com/pranaypalem/toll_automation_fast_api/actions/workflows/deploy-frontend.yml)
 
 A serverless application that processes toll transaction data from Excel files and returns processed CSV results.
 
