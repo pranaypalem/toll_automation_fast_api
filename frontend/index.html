@@ -810,17 +810,37 @@
                         data.download_url : 
                         `${API_BASE_URL}${data.download_url}`;
                     
-                    // Create download link
-                    const a = document.createElement('a');
-                    a.href = downloadUrl;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    
-                    if (data.expires_in) {
-                        showStatus(`✅ Download started (link expires in ${data.expires_in/60} minutes)`, 'success');
+                    // For S3 presigned URLs, fetch the file and create blob download
+                    if (data.download_url.startsWith('http')) {
+                        try {
+                            const fileResponse = await fetch(downloadUrl);
+                            if (fileResponse.ok) {
+                                const blob = await fileResponse.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                window.URL.revokeObjectURL(url);
+                                
+                                showStatus(`✅ Download completed (${Math.round(blob.size/1024)}KB)`, 'success');
+                            } else {
+                                throw new Error('Failed to fetch file from S3');
+                            }
+                        } catch (fetchError) {
+                            console.error('S3 download error:', fetchError);
+                            showStatus('❌ Failed to download file from S3', 'error');
+                        }
                     } else {
+                        // For direct downloads, use regular link click
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
                         showStatus('✅ Download started', 'success');
                     }
                 } else {

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class S3Service:
     def __init__(self):
-        self.s3_client = boto3.client('s3')
+        self.s3_client = boto3.client('s3', region_name='us-east-1')
         self.bucket_name = 'toll-automation-processed-files'
     
     def upload_file(self, local_file_path: str, s3_key: str) -> bool:

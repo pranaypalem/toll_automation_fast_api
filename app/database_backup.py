@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class DatabaseBackup:
     def __init__(self):
-        self.s3_client = boto3.client('s3')
+        self.s3_client = boto3.client('s3', region_name='us-east-1')
         self.bucket_name = 'toll-automation-processed-files'
         self.db_backup_key = 'database/toll_automation.db'
         self.local_db_path = '/tmp/toll_automation.db'
