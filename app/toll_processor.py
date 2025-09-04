@@ -108,29 +108,10 @@ class TollProcessor:
                     logger.warning(f"{engine} failed: {str(e)}")
                     continue
             
-            # Try reading as CSV if detected as CSV or if Excel engines failed for .xls files
-            if df is None and (actual_format == 'csv' or file_ext == 'xls'):
-                try:
-                    logger.info("Attempting to read as CSV format")
-                    df = pd.read_csv(file_path, encoding='utf-8')
-                    logger.info("Successfully read as CSV format")
-                except UnicodeDecodeError:
-                    try:
-                        # Try different encoding
-                        logger.info("UTF-8 failed, trying latin-1 encoding")
-                        df = pd.read_csv(file_path, encoding='latin-1')
-                        logger.info("Successfully read as CSV with latin-1 encoding")
-                    except Exception as e:
-                        logger.warning(f"CSV read with latin-1 failed: {str(e)}")
-                        # Try tab-separated values
-                        try:
-                            logger.info("Trying tab-separated format")
-                            df = pd.read_csv(file_path, sep='\t', encoding='utf-8')
-                            logger.info("Successfully read as TSV format")
-                        except Exception as e2:
-                            logger.warning(f"TSV read failed: {str(e2)}")
-                except Exception as e:
-                    logger.warning(f"CSV read failed: {str(e)}")
+            # Try reading as CSV/text format and convert to Excel
+            if df is None and (actual_format == 'csv' or file_ext == 'xls' or actual_format != file_ext):
+                logger.info("Attempting to read as text-based format and convert to Excel")
+                df = self._read_and_convert_text_format(file_path, file_ext)
             
             if df is None:
                 # Provide more helpful error message
@@ -206,6 +187,182 @@ class TollProcessor:
         except Exception as e:
             logger.warning(f"Could not detect file format: {str(e)}")
             return None
+
+    def _read_and_convert_text_format(self, file_path: str, file_ext: str) -> pd.DataFrame:
+        """
+        Read file as text format (CSV, TSV) and convert to proper Excel format
+        This handles files with wrong extensions or format mismatches
+        """
+        import os
+        import tempfile
+        
+        df = None
+        conversion_methods = [
+            # (description, read_function)
+            ("HTML table format", lambda fp: self._read_html_table(fp)),
+            ("XML Excel format", lambda fp: self._read_xml_excel(fp)),
+            ("CSV with comma separator", lambda fp: pd.read_csv(fp, encoding='utf-8')),
+            ("CSV with comma separator (latin-1)", lambda fp: pd.read_csv(fp, encoding='latin-1')),
+            ("TSV with tab separator", lambda fp: pd.read_csv(fp, sep='\t', encoding='utf-8')),
+            ("TSV with tab separator (latin-1)", lambda fp: pd.read_csv(fp, sep='\t', encoding='latin-1')),
+            ("Semicolon separated", lambda fp: pd.read_csv(fp, sep=';', encoding='utf-8')),
+            ("Pipe separated", lambda fp: pd.read_csv(fp, sep='|', encoding='utf-8')),
+        ]
+        
+        # Try each conversion method
+        for desc, read_func in conversion_methods:
+            try:
+                logger.info(f"Trying to read as: {desc}")
+                df = read_func(file_path)
+                
+                if df is not None and not df.empty:
+                    logger.info(f"Successfully read as {desc} with {len(df)} rows and {len(df.columns)} columns")
+                    
+                    # Convert to proper Excel format
+                    converted_path = self._convert_to_excel_format(df, file_path)
+                    
+                    # Now read the converted file using Excel engines
+                    try:
+                        logger.info("Reading converted Excel file")
+                        df_excel = pd.read_excel(converted_path, engine="openpyxl")
+                        logger.info("Successfully read converted Excel file")
+                        
+                        # Clean up the temporary converted file
+                        os.remove(converted_path)
+                        return df_excel
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to read converted Excel file: {str(e)}")
+                        # Clean up and continue trying other methods
+                        if os.path.exists(converted_path):
+                            os.remove(converted_path)
+                        continue
+                        
+            except Exception as e:
+                logger.warning(f"Failed to read as {desc}: {str(e)}")
+                continue
+        
+        logger.warning("All text format conversion attempts failed")
+        return None
+
+    def _convert_to_excel_format(self, df: pd.DataFrame, original_path: str) -> str:
+        """
+        Convert DataFrame to a proper Excel (.xlsx) file
+        Returns path to the converted file
+        """
+        import os
+        import tempfile
+        
+        # Create temporary file for conversion
+        temp_dir = os.path.dirname(original_path)
+        base_name = os.path.splitext(os.path.basename(original_path))[0]
+        converted_path = os.path.join(temp_dir, f"{base_name}_converted.xlsx")
+        
+        try:
+            # Save as proper Excel file
+            logger.info(f"Converting to Excel format: {converted_path}")
+            df.to_excel(converted_path, index=False, engine='openpyxl')
+            logger.info("Conversion to Excel format completed")
+            return converted_path
+            
+        except Exception as e:
+            logger.error(f"Failed to convert to Excel format: {str(e)}")
+            raise ValueError(f"Failed to convert file to Excel format: {str(e)}")
+
+    def _read_html_table(self, file_path: str) -> pd.DataFrame:
+        """
+        Read HTML table from file (handles Excel HTML exports with .xls extension)
+        """
+        try:
+            # Try pandas read_html first
+            logger.info("Attempting to parse as HTML table")
+            tables = pd.read_html(file_path, encoding='utf-8')
+            
+            if tables and len(tables) > 0:
+                # Use the first (or largest) table
+                df = tables[0] if len(tables) == 1 else max(tables, key=len)
+                logger.info(f"Successfully parsed HTML table with {len(df)} rows")
+                return df
+                
+        except Exception as e:
+            logger.warning(f"Failed to parse as HTML table with pandas: {str(e)}")
+            
+            # Try manual HTML parsing as fallback
+            try:
+                from bs4 import BeautifulSoup
+                logger.info("Attempting manual HTML parsing with BeautifulSoup")
+                
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                soup = BeautifulSoup(content, 'html.parser')
+                table = soup.find('table')
+                
+                if table:
+                    # Extract table data
+                    rows = []
+                    for tr in table.find_all('tr'):
+                        row = []
+                        for td in tr.find_all(['td', 'th']):
+                            # Clean cell text
+                            cell_text = td.get_text(strip=True)
+                            row.append(cell_text)
+                        if row:  # Only add non-empty rows
+                            rows.append(row)
+                    
+                    if rows:
+                        df = pd.DataFrame(rows[1:], columns=rows[0] if rows else None)
+                        logger.info(f"Successfully parsed HTML manually with {len(df)} rows")
+                        return df
+                        
+            except ImportError:
+                logger.warning("BeautifulSoup not available for manual HTML parsing")
+            except Exception as e2:
+                logger.warning(f"Manual HTML parsing failed: {str(e2)}")
+        
+        return None
+
+    def _read_xml_excel(self, file_path: str) -> pd.DataFrame:
+        """
+        Read XML-based Excel format (handles Excel XML exports)
+        """
+        try:
+            import xml.etree.ElementTree as ET
+            logger.info("Attempting to parse as XML Excel format")
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Simple XML table parsing - look for common Excel XML patterns
+            if 'Worksheet' in content and 'Row' in content:
+                # Try to parse Excel XML format
+                root = ET.fromstring(content)
+                
+                rows = []
+                # Look for worksheet data patterns
+                for worksheet in root.iter():
+                    if 'Row' in worksheet.tag:
+                        row_data = []
+                        for cell in worksheet.iter():
+                            if 'Cell' in cell.tag or 'Data' in cell.tag:
+                                cell_text = cell.text or ''
+                                row_data.append(cell_text.strip())
+                        if row_data:
+                            rows.append(row_data)
+                
+                if rows:
+                    # Use first row as headers if it looks like headers
+                    headers = rows[0] if rows else None
+                    data_rows = rows[1:] if len(rows) > 1 else rows
+                    
+                    df = pd.DataFrame(data_rows, columns=headers)
+                    logger.info(f"Successfully parsed XML Excel format with {len(df)} rows")
+                    return df
+                    
+        except Exception as e:
+            logger.warning(f"XML Excel parsing failed: {str(e)}")
+        
+        return None
 
     def _filter_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
