@@ -23,8 +23,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "/tmp/uploads"
-OUTPUT_DIR = "/tmp/outputs"
+# Use local directories for development, /tmp for Lambda
+import os
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    # Running in Lambda
+    UPLOAD_DIR = "/tmp/uploads"
+    OUTPUT_DIR = "/tmp/outputs"
+else:
+    # Running locally
+    UPLOAD_DIR = "uploads"
+    OUTPUT_DIR = "outputs"
 
 # Ensure directories exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)

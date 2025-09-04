@@ -40,7 +40,10 @@
       "Bash(aws s3api put-public-access-block:*)",
       "Bash(aws s3 sync:*)",
       "Bash(aws s3 cp:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(venvScripts:*)",
+      "Bash(.venvScriptsActivate.ps1)"
     ],
     "deny": [],
     "ask": []
