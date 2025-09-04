@@ -43,7 +43,16 @@
       "Bash(curl:*)",
       "Bash(python:*)",
       "Bash(venvScripts:*)",
-      "Bash(.venvScriptsActivate.ps1)"
+      "Bash(.venvScriptsActivate.ps1)",
+      "Bash(aws logs describe-log-groups:*)",
+      "Bash(aws logs describe-log-streams:*)",
+      "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)",
+      "Read(/C:\\Users\\Owner\\Documents\\Programming\\AutomationVBA\\toll_automation_fast_api/**)",
+      "Bash(docker:*)",
+      "Bash(aws apigateway get-rest-apis:*)",
+      "Bash(aws apigateway get-rest-api:*)",
+      "Bash(aws apigateway update-rest-api:*)",
+      "Bash(aws apigateway put-rest-api:*)"
     ],
     "deny": [],
     "ask": []
