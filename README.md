@@ -8,7 +8,10 @@ A serverless application that processes toll transaction data from Excel files a
 
 ## 🚀 Live Application
 
-- **🌐 Website**: [toll-automation-frontend-9713.s3-website-us-east-1.amazonaws.com](http://toll-automation-frontend-9713.s3-website-us-east-1.amazonaws.com)
+- **🌐 Website (HTTPS)**: [d14g7eqts71yui.cloudfront.net](https://d14g7eqts71yui.cloudfront.net/)
+- **🌐 Website (HTTP)**: [toll-automation-frontend-9713.s3-website-us-east-1.amazonaws.com](http://toll-automation-frontend-9713.s3-website-us-east-1.amazonaws.com)
+
+The application is served through AWS CloudFront CDN for improved performance, security (HTTPS), and global content delivery. The S3 website provides direct HTTP access for development purposes.
 
 ## ✨ Features
 
