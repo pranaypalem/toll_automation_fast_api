@@ -71,39 +71,68 @@ class TollProcessor:
                 
             logger.info(f"Reading file: {file_path} (size: {file_size} bytes)")
             
-            # Try reading with different engines to handle various Excel formats
+            # Determine engine based on file extension
+            file_ext = file_path.lower().split('.')[-1]
+            logger.info(f"File extension detected: {file_ext}")
+            
             df = None
             last_error = None
             
-            # First try with openpyxl for .xlsx files
-            try:
-                logger.info("Attempting to read with openpyxl engine")
-                df = pd.read_excel(file_path, engine="openpyxl")
-                logger.info("Successfully read with openpyxl")
-            except Exception as e:
-                last_error = e
-                logger.warning(f"openpyxl failed: {str(e)}")
-                
-                # Try with xlrd for .xls files
+            # Try appropriate engine first based on file extension
+            if file_ext in ['xlsx', 'xlsm']:
+                # Try openpyxl for newer Excel formats
                 try:
-                    logger.info("Attempting to read with xlrd engine")
+                    logger.info("Attempting to read .xlsx/.xlsm file with openpyxl engine")
+                    df = pd.read_excel(file_path, engine="openpyxl")
+                    logger.info("Successfully read with openpyxl")
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"openpyxl failed: {str(e)}")
+                    # For .xlsx files, also try xlrd as fallback
+                    try:
+                        logger.info("Fallback: Attempting to read with xlrd engine")
+                        df = pd.read_excel(file_path, engine="xlrd") 
+                        logger.info("Successfully read with xlrd fallback")
+                    except Exception as e2:
+                        last_error = e2
+                        logger.warning(f"xlrd fallback failed: {str(e2)}")
+                        
+            elif file_ext == 'xls':
+                # Try xlrd for older Excel formats
+                try:
+                    logger.info("Attempting to read .xls file with xlrd engine")
                     df = pd.read_excel(file_path, engine="xlrd")
                     logger.info("Successfully read with xlrd")
-                except Exception as e2:
-                    last_error = e2
-                    logger.warning(f"xlrd failed: {str(e2)}")
-                    
-                    # Try with calamine engine as last resort
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"xlrd failed: {str(e)}")
+                    # For .xls files, try openpyxl as fallback
                     try:
-                        logger.info("Attempting to read with calamine engine")
-                        df = pd.read_excel(file_path, engine="calamine")
-                        logger.info("Successfully read with calamine")
-                    except Exception as e3:
-                        last_error = e3
-                        logger.error(f"All engines failed. Last error: {str(e3)}")
+                        logger.info("Fallback: Attempting to read with openpyxl engine")
+                        df = pd.read_excel(file_path, engine="openpyxl")
+                        logger.info("Successfully read with openpyxl fallback")
+                    except Exception as e2:
+                        last_error = e2
+                        logger.warning(f"openpyxl fallback failed: {str(e2)}")
+            else:
+                # Unknown extension, try openpyxl first
+                try:
+                    logger.info("Unknown extension, trying openpyxl first")
+                    df = pd.read_excel(file_path, engine="openpyxl")
+                    logger.info("Successfully read with openpyxl")
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"openpyxl failed: {str(e)}")
+                    try:
+                        logger.info("Fallback: Attempting to read with xlrd engine")
+                        df = pd.read_excel(file_path, engine="xlrd")
+                        logger.info("Successfully read with xlrd fallback")
+                    except Exception as e2:
+                        last_error = e2
+                        logger.warning(f"xlrd fallback failed: {str(e2)}")
             
             if df is None:
-                raise ValueError(f"Could not read Excel file with any engine. Error: {str(last_error)}")
+                raise ValueError(f"Could not read Excel file with any engine. Last error: {str(last_error)}")
 
             logger.info(f"Excel file loaded successfully with {len(df)} rows and {len(df.columns)} columns")
             
