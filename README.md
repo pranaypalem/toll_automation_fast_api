@@ -15,15 +15,15 @@ A lightweight FastAPI microservice designed for AWS Lambda deployment that proce
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   CloudFront    │    │  AWS Lambda     │    │   FastAPI       │
-│   (Frontend)    │───▶│   Function      │───▶│  Application    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                        ┌─────────────────┐
-                        │  Amazon ECR     │
-                        │ (Docker Image)  │
-                        └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   User Browser  │───▶│   S3 Website    │───▶│  API Gateway    │───▶│  AWS Lambda     │
+│                 │    │   (Frontend)    │    │   (REST API)    │    │   Function      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                                                │
+                                                                        ┌─────────────────┐
+                                                                        │  Amazon ECR     │
+                                                                        │ (Docker Image)  │
+                                                                        └─────────────────┘
 ```
 
 ## API Endpoints
@@ -145,26 +145,42 @@ aws lambda create-function \
 
 ## CI/CD Pipeline
 
-The GitHub Actions workflow automatically:
+### Backend Deployment (Lambda)
+The `deploy-lambda.yml` workflow automatically:
 1. Builds Docker image on push to main
 2. Pushes image to Amazon ECR
 3. Updates Lambda function with new image
-4. Runs on both push and pull request events
+4. Triggers on backend code changes
+
+### Frontend Deployment (S3)
+The `deploy-frontend.yml` workflow automatically:
+1. Deploys frontend files to S3 on changes to `frontend/` directory
+2. Updates the static website hosting
+3. Can be triggered manually via workflow_dispatch
+4. Keeps frontend deployment separate from backend
+
+### Live Deployment
+- 🌐 **Website**: http://toll-automation-frontend-9713.s3-website-us-east-1.amazonaws.com
+- 🔌 **API**: https://097ytjiafd.execute-api.us-east-1.amazonaws.com/prod
 
 ## Project Structure
 
 ```
 toll_automation_fast_api/
+├── frontend/
+│   └── index.html           # Beautiful web interface
 ├── app/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI application
 │   └── toll_processor.py    # Data processing logic
 ├── .github/
 │   └── workflows/
-│       └── deploy-lambda.yml # CI/CD pipeline
+│       ├── deploy-lambda.yml    # Backend CI/CD pipeline
+│       └── deploy-frontend.yml  # Frontend CI/CD pipeline
 ├── lambda_handler.py        # AWS Lambda entry point
 ├── requirements.txt         # Production dependencies
 ├── Dockerfile              # Lambda-optimized container
+├── aws-setup-guide.md      # Infrastructure setup guide
 └── README.md
 ```
 

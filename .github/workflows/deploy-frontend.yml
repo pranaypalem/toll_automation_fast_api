@@ -1,0 +1,46 @@
+name: Deploy Frontend to S3
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: toll-automation-frontend-9713
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Deploy frontend to S3
+      run: |
+        echo "🚀 Deploying frontend to S3..."
+        
+        # Upload frontend files
+        aws s3 cp frontend/index.html s3://$S3_BUCKET/index.html
+        
+        # Optionally sync entire frontend directory (if you add more files)
+        # aws s3 sync frontend/ s3://$S3_BUCKET/ --delete
+        
+        echo "✅ Frontend deployed successfully!"
+        echo "🔗 Website URL: http://$S3_BUCKET.s3-website-$AWS_REGION.amazonaws.com"
+
+    - name: Invalidate CloudFront cache (if applicable)
+      continue-on-error: true
+      run: |
+        echo "Note: Add CloudFront distribution ID to invalidate cache if using CloudFront"
+        # aws cloudfront create-invalidation --distribution-id YOUR_DISTRIBUTION_ID --paths "/*"
