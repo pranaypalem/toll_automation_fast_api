@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: toll-automation-lambda
+  ECR_REPOSITORY: toll_automation
 
 jobs:
   build-and-push:
@@ -45,7 +45,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
-        LAMBDA_FUNCTION_NAME: toll-automation-lambda
+        LAMBDA_FUNCTION_NAME: toll-automation
       run: |
         aws lambda update-function-code \
           --function-name $LAMBDA_FUNCTION_NAME \
