@@ -810,27 +810,24 @@
                         data.download_url : 
                         `${API_BASE_URL}${data.download_url}`;
                     
-                    // For S3 presigned URLs, fetch the file and create blob download
+                    // For S3 presigned URLs, use direct link (no CORS issues)
                     if (data.download_url.startsWith('http')) {
                         try {
-                            const fileResponse = await fetch(downloadUrl);
-                            if (fileResponse.ok) {
-                                const blob = await fileResponse.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = filename;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                window.URL.revokeObjectURL(url);
-                                
-                                showStatus(`✅ Download completed (${Math.round(blob.size/1024)}KB)`, 'success');
+                            const a = document.createElement('a');
+                            a.href = downloadUrl;
+                            a.download = filename;
+                            a.target = '_blank';  // Open in new tab to avoid navigation issues
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            
+                            if (data.expires_in) {
+                                showStatus(`✅ Download started (link expires in ${Math.round(data.expires_in/60)} min)`, 'success');
                             } else {
-                                throw new Error('Failed to fetch file from S3');
+                                showStatus('✅ Download started', 'success');
                             }
-                        } catch (fetchError) {
-                            console.error('S3 download error:', fetchError);
+                        } catch (downloadError) {
+                            console.error('S3 download error:', downloadError);
                             showStatus('❌ Failed to download file from S3', 'error');
                         }
                     } else {

@@ -24,11 +24,19 @@ class S3Service:
     def generate_presigned_url(self, s3_key: str, expiration: int = 3600) -> Optional[str]:
         """Generate a presigned URL for downloading a file from S3."""
         try:
+            # Extract filename from S3 key
+            filename = s3_key.split('/')[-1]
+            
             response = self.s3_client.generate_presigned_url(
                 'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': s3_key},
+                Params={
+                    'Bucket': self.bucket_name, 
+                    'Key': s3_key,
+                    'ResponseContentDisposition': f'attachment; filename="{filename}"'
+                },
                 ExpiresIn=expiration
             )
+            logger.info(f"Generated presigned URL for {s3_key}: {response}")
             return response
         except ClientError as e:
             logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
